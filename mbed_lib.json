@@ -1,0 +1,64 @@
+{
+    "name": "aws-client",
+    "config": {
+        "log-puts": {
+            "help": "Sets an alternative to puts for logs output. Especially usefull to synchronize output with mbed-trace",
+            "macro": "IotLogging_Puts"
+        },
+        "log-level-global": {
+            "help": "Set a default log level.",
+            "macro": "IOT_LOG_LEVEL_GLOBAL"
+        },
+        "log-level-platform": {
+            "help": "Set the log level for the platform.",
+            "macro": "IOT_LOG_LEVEL_PLATFORM"
+        },
+        "log-level-network": {
+            "help": "Set the log level for the network.",
+            "macro": "IOT_LOG_LEVEL_NETWORK"
+        },
+        "log-level-taskpool": {
+            "help": "Set the log level for taskpool.",
+            "macro": "IOT_LOG_LEVEL_TASKPOOL"
+        },
+        "aws-log-level-global": {
+            "help": "Set a default log level for aws.",
+            "macro": "AWS_IOT_LOG_LEVEL_GLOBAL"
+        },"aws-log-level-defender": {
+            "help": "Set the log level for defender.",
+            "macro": "AWS_IOT_LOG_LEVEL_DEFENDER"
+        },
+        "aws-log-level-shadow": {
+            "help": "Set the log level for aws shadow.",
+            "macro": "AWS_IOT_LOG_LEVEL_SHADOW"
+        },
+        "aws-log-level-jobs": {
+            "help": "Set the log level for aws jobs.",
+            "macro": "AWS_IOT_LOG_LEVEL_JOBS"
+        },
+        "enable-serializer-overrides": {
+            "help": "Set this to `1` to allow the MQTT packet serializer and deserializer functions to be overridden.",
+            "macro": "IOT_MQTT_ENABLE_SERIALIZE_OVERRIDES"
+        },
+        "mqtt-enable_metrics": {
+            "help": "Set this to `1` to enable anonymous metrics reporting to AWS IoT.",
+            "macro": "AWS_IOT_MQTT_ENABLE_METRICS"
+        },
+        "mqtt-response-wait-ms": {
+            "help": "A 'reasonable amount of time' to wait for keep-alive responses from the MQTT server.",
+            "macro": "IOT_MQTT_RESPONSE_WAIT_MS"
+        },
+        "mqtt-connections": {
+            "help": "When static memory only is 1, number of MQTT connections that may be opened, Defaults to 1 if undefined.",
+            "macro": "IOT_MQTT_CONNECTIONS"
+        },
+        "mqtt-max-in-progress-operations": {
+            "help": "When static memory only is 1, maximum number of MQTT operations that may be in-progress at any time. Defaults to 10 if undefined.",
+            "macro": "IOT_MQTT_MAX_IN_PROGRESS_OPERATIONS"
+        },
+        "mqtt-connections": {
+            "help": "When static memory only is 1, maximum number of MQTT subscriptions at any time. Defaults to 8 if undefined.",
+            "macro": "IOT_MQTT_SUBSCRIPTIONS"
+        }
+    }
+}
