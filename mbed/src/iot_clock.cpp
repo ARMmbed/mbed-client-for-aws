@@ -40,11 +40,7 @@ bool IotClock_GetTimestring(char * pBuffer, size_t bufferSize, size_t * pTimestr
 }
 
 bool IotClock_TimerCreate(IotTimer_t * pNewTimer, IotThreadRoutine_t expirationRoutine, void * pArgument ) {
-    auto timeout = new SystemTimer { { osPriorityNormal, OS_STACK_SIZE, nullptr, "AwsPortTimer" }, expirationRoutine, pArgument, 0, false };
-    if (timeout == NULL) {
-        return false;
-    }
-    *pNewTimer = timeout;
+    *pNewTimer = new SystemTimer { { osPriorityNormal, OS_STACK_SIZE, nullptr, "AwsPortTimer" }, expirationRoutine, pArgument, 0, false };
     return true;
 }
 

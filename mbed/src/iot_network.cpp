@@ -111,7 +111,6 @@ static IotNetworkError_t network_new(IotNetworkServerInfo_t pServerInfo,
     nsapi_error_t res = NSAPI_ERROR_OK;
 
     IOT_SET_AND_GOTO_CLEANUP_IF_FALSE( IOT_NETWORK_FAILURE, net != NULL );
-    IOT_SET_AND_GOTO_CLEANUP_IF_FALSE( IOT_NETWORK_NO_MEMORY, conn != NULL );
 
     res = conn->socket.open(net);
     IOT_SET_AND_GOTO_CLEANUP_IF_FALSE( IOT_NETWORK_FAILURE, res == NSAPI_ERROR_OK );
@@ -151,7 +150,7 @@ static IotNetworkError_t network_new(IotNetworkServerInfo_t pServerInfo,
     }
 
     IOT_FUNCTION_CLEANUP_BEGIN();
-    if ((res != NSAPI_ERROR_OK) && (conn != NULL)) {
+    if (res != NSAPI_ERROR_OK) {
         delete conn;
     } else {
         conn->thread.start({conn, &NetworkConnection::event_dispatcher_thread});
