@@ -10,8 +10,8 @@ An example demonstrating the use of this library has been provided as part of th
    1. AWS IoT device embedded-C SDK available [here](https://github.com/aws/aws-iot-device-sdk-embedded-C).
    1. tinycbor library available [here](https://github.com/intel/tinycbor.git\#755f9ef932f9830a63a712fd2ac971d838b131f1).
 1. This SDK port follows the steps listed in AWS' developer guide found [here](https://docs.aws.amazon.com/freertos/latest/lib-ref/c-sdk/main/guide_developer.html).
-1. The "Config header" and the "Platform Types" requirements can be found in the library under `/mbed-aws-client/mbed/include/`
-1. The "Platform layer" port can be found under `/mbed-aws-client/mbed/src` . As a minimum, a system clock, mutex, semaphore, network implementation and an optional thread implementation are required. More details on this are provided [here](https://docs.aws.amazon.com/freertos/latest/lib-ref/c-sdk/platform/index.html#platform). The thread implementation is optional and needed for synchronization between threads while using traces for debug messages. Otherwise this is optional.
+1. The "Config header" and the "Platform Types" requirements can be found in the library under [`mbed/include/`](./mbed/include)
+1. The "Platform layer" port can be found under [`mbed/src/`](./mbed/src) . As a minimum, a system clock, mutex, semaphore, network implementation and an optional thread implementation are required. More details on this are provided [here](https://docs.aws.amazon.com/freertos/latest/lib-ref/c-sdk/platform/index.html#platform). The thread implementation is optional and needed for synchronization between threads while using traces for debug messages.
 
 ## Related Links
 
