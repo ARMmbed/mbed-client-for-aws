@@ -45,6 +45,10 @@ extern "C" {
 #define Iot_DefaultMalloc    malloc
 #define Iot_DefaultFree      free
 
+#ifdef IotLogging_Puts
+    void IotLogging_Puts(const char *);
+#endif
+
 /* The build system will choose the appropriate system types file for the platform
  * layer based on the host operating system. */
 #include "iot_platform_types_mbed_os.h"

@@ -87,7 +87,7 @@ struct NetworkConnection {
                 cbk(this, IOT_NETWORK_UNKNOWN_CLOSED, ctx); 
             }
         }
-        tr_info("exiting dispatcher thread.");
+        tr_debug("exiting dispatcher thread.");
     }
 };
 
