@@ -8,7 +8,7 @@ aws-iot-device-sdk-embedded-c/scripts/*
 aws-iot-device-sdk-embedded-c/tests/*
 aws-iot-device-sdk-embedded-c/third_party/*
 aws-iot-device-sdk-embedded-c/libraries/aws/common/test/*
-aws-iot-device-sdk-embedded-c/libraries/aws/defender/test/*
+aws-iot-device-sdk-embedded-c/libraries/aws/defender/*
 aws-iot-device-sdk-embedded-c/libraries/aws/jobs/test/*
 aws-iot-device-sdk-embedded-c/libraries/aws/shadow/test/*
 aws-iot-device-sdk-embedded-c/libraries/standard/common/test/*

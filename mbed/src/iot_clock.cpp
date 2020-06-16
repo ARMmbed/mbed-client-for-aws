@@ -32,7 +32,7 @@ uint64_t IotClock_GetTimeMs(void) {
 
 bool IotClock_GetTimestring(char * pBuffer, size_t bufferSize, size_t * pTimestringLength) {
     auto now = time(NULL);
-    auto length = strftime(pBuffer, bufferSize, "%d %b %Y %H:%M", gmtime(&now));
+    auto length = strftime(pBuffer, bufferSize, "%d %b %Y %H:%M", localtime(&now));
     if (pTimestringLength != NULL) {
         *pTimestringLength = length;
     }
