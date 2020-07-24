@@ -1,5 +1,6 @@
 /*
- * Copyright (C) 2020 ARM, Ltd. or its affiliates.
+ * Copyright (c) 2020 Arm Limited
+ * SPDX-License-Identifier: Apache-2.0
  */
 
 /**
