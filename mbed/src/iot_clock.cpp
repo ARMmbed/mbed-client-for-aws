@@ -8,34 +8,23 @@
 
 #define TRACE_GROUP "AWSClock"
 
-extern "C" {
+extern "C"
+{
 #include "iot_clock.h"
-#include "iot_threads.h"
 }
 
 struct SystemTimer {
-    Thread  thread;
-    void (*routine)(void*);
-    void *routineArgument;
-    uint32_t first_period;
-    uint32_t period;
-
-    void thread_routine() {
-        ThisThread::sleep_for(first_period);
-        while (true) {
-            routine(routineArgument);
-            if (period == 0) { break; }
-            ThisThread::sleep_for(period);
-        }
-        tr_debug("closing thread");
-    }
+    Event<void(void *)> event;
+    void *argument;
 };
 
-uint64_t IotClock_GetTimeMs(void) {
-    return rtos::Kernel::get_ms_count();
+uint64_t IotClock_GetTimeMs(void)
+{
+    return Kernel::Clock::now().time_since_epoch().count();
 }
 
-bool IotClock_GetTimestring(char * pBuffer, size_t bufferSize, size_t * pTimestringLength) {
+bool IotClock_GetTimestring(char *pBuffer, size_t bufferSize, size_t *pTimestringLength)
+{
     auto now = time(NULL);
     auto length = strftime(pBuffer, bufferSize, "%d %b %Y %H:%M", localtime(&now));
     if (pTimestringLength != NULL) {
@@ -44,24 +33,49 @@ bool IotClock_GetTimestring(char * pBuffer, size_t bufferSize, size_t * pTimestr
     return (bufferSize >= length);
 }
 
-bool IotClock_TimerCreate(IotTimer_t * pNewTimer, IotThreadRoutine_t expirationRoutine, void * pArgument ) {
-    *pNewTimer = new SystemTimer { { osPriorityNormal, OS_STACK_SIZE, nullptr, "AwsPortTimer" }, expirationRoutine, pArgument, 0, false };
-    return true;
-}
+bool IotClock_TimerCreate(IotTimer_t *pNewTimer, IotThreadRoutine_t expirationRoutine, void *pArgument)
+{
+    // Use the shared event queue
+    *pNewTimer = new SystemTimer{{mbed_event_queue(), expirationRoutine}, pArgument};
 
-bool IotClock_TimerArm(IotTimer_t * pTimer, uint32_t relativeTimeoutMs, uint32_t periodMs) {
-
-    auto timer = *pTimer;
-    timer->first_period = relativeTimeoutMs;
-    timer->period = periodMs;
-    if (timer->thread.get_state() == Thread::State::Deleted) {
-        timer->thread.start({timer, &SystemTimer::thread_routine});
+    if (*pNewTimer == NULL) {
+        tr_error("Timer create failed.");
+        return false;
     }
 
     return true;
 }
 
-void IotClock_TimerDestroy(IotTimer_t * pTimer) {
-    delete *pTimer;
-    *pTimer = nullptr;
+bool IotClock_TimerArm(IotTimer_t *pTimer, uint32_t relativeTimeoutMs, uint32_t periodMs)
+{
+    auto timer = *pTimer;
+    if (timer == NULL) {
+        return false;
+    }
+
+    // Set initial delay
+    timer->event.delay(std::chrono::milliseconds(relativeTimeoutMs));
+
+    // Set period
+    if (periodMs > 0) {
+        timer->event.period(std::chrono::milliseconds(periodMs));
+    } else {
+        // API to disable the periodic call does not exist. Setting to the initial value (-1).
+        timer->event.period(std::chrono::milliseconds(-1));
+    }
+
+    auto ret = timer->event.post(timer->argument);
+    if (ret == 0) {
+        tr_error("Post event failed, probably out of memory.");
+        return false;
+    }
+
+    return true;
+}
+
+void IotClock_TimerDestroy(IotTimer_t *pTimer)
+{
+    auto timer = *pTimer;
+    timer->event.cancel();
+    delete timer;
 }
