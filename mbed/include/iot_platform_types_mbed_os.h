@@ -44,8 +44,11 @@ typedef struct {
  */
 typedef struct {
     const char *rootCA;
+    size_t rootCALen;
     const char *clientCrt;
+    size_t clientCrtLen;
     const char *clientKey;
+    size_t clientKeyLen;
 } _IotNetworkCredentials_t;
 
 /**

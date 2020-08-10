@@ -5,10 +5,12 @@
 
 #include "mbed.h"
 #include "mbed_trace.h"
+#include "assert.h"
 
 #define TRACE_GROUP "AWSPort"
 
-extern "C" {
+extern "C"
+{
 #include "iot_config.h"
 #include "iot_network.h"
 #include "iot_error.h"
@@ -17,43 +19,45 @@ extern "C" {
 /* Private methods */
 static IotNetworkError_t network_new(IotNetworkServerInfo_t pServerInfo,
                                      IotNetworkCredentials_t pCredentialInfo,
-                                     IotNetworkConnection_t * pConnection);
+                                     IotNetworkConnection_t *pConnection);
 static IotNetworkError_t network_set_receive_callback(IotNetworkConnection_t pConnection,
                                                       IotNetworkReceiveCallback_t receiveCallback,
-                                                      void * pContext);
+                                                      void *pContext);
 static IotNetworkError_t network_set_close_callback(IotNetworkConnection_t pConnection,
                                                     IotNetworkCloseCallback_t closeCallback,
-                                                    void * pContext);
+                                                    void *pContext);
 static size_t network_send(IotNetworkConnection_t pConnection,
-                           const uint8_t * pMessage,
+                           const uint8_t *pMessage,
                            size_t messageLength);
 static size_t network_recv(IotNetworkConnection_t pConnection,
-                           uint8_t * pBuffer,
+                           uint8_t *pBuffer,
                            size_t bytesRequested);
 static IotNetworkError_t network_close(IotNetworkConnection_t pConnection);
 static IotNetworkError_t network_delete(IotNetworkConnection_t pConnection);
 
 struct NetworkConnection {
-    TLSSocket   socket;
-    Thread      thread;
-    Mutex       mtx;
-    EventFlags  flags;
+    TLSSocket socket;
+    Thread thread;
+    Mutex mtx;
+    EventFlags flags;
 
-    enum class Flags: uint32_t {
+    enum class Flags : uint32_t {
         sigio = 1,
         termination = 2
     };
 
-    void (*on_recv)(NetworkConnection*, void *);
+    void (*on_recv)(NetworkConnection *, void *);
     void *on_recv_ctx;
-    void (*on_close)(NetworkConnection*, IotNetworkCloseReason, void *);
+    void (*on_close)(NetworkConnection *, IotNetworkCloseReason, void *);
     void *on_close_ctx;
 
-    void on_event() {
+    void on_event()
+    {
         flags.set((uint32_t)Flags::sigio);
     }
 
-    void event_dispatcher_thread() {
+    void event_dispatcher_thread()
+    {
         while (true) {
             auto flag_read = flags.wait_any((uint32_t)Flags::sigio | (uint32_t)Flags::termination);
 
@@ -75,7 +79,7 @@ struct NetworkConnection {
                 // XXX: I don't think this really safe. cbk & ctx might be freed between the unlock
                 // and this call
                 if (cbk != NULL) {
-                    cbk(this, ctx); 
+                    cbk(this, ctx);
                 }
             } else if (result != NSAPI_ERROR_WOULD_BLOCK) {
                 break;
@@ -89,7 +93,7 @@ struct NetworkConnection {
             // XXX: I don't think this really safe. cbk & ctx might be freed between the unlock
             // and this call
             if (cbk != NULL) {
-                cbk(this, IOT_NETWORK_UNKNOWN_CLOSED, ctx); 
+                cbk(this, IOT_NETWORK_UNKNOWN_CLOSED, ctx);
             }
         }
         tr_debug("exiting dispatcher thread.");
@@ -108,22 +112,28 @@ static const IotNetworkInterface_t gc_network = {
 
 static IotNetworkError_t network_new(IotNetworkServerInfo_t pServerInfo,
                                      IotNetworkCredentials_t pCredentialInfo,
-                                     IotNetworkConnection_t * pConnection) {
-    IOT_FUNCTION_ENTRY( IotNetworkError_t, IOT_NETWORK_SUCCESS );
+                                     IotNetworkConnection_t *pConnection)
+{
+    IOT_FUNCTION_ENTRY(IotNetworkError_t, IOT_NETWORK_SUCCESS);
 
     auto net = NetworkInterface::get_default_instance();
-    auto conn = new NetworkConnection { {}, {osPriorityNormal, OS_STACK_SIZE, nullptr, "awsNetworkSocket"} };
+    auto conn = new NetworkConnection{{}, {osPriorityNormal, OS_STACK_SIZE, nullptr, "awsNetworkSocket"}};
     nsapi_error_t res = NSAPI_ERROR_OK;
 
-    IOT_SET_AND_GOTO_CLEANUP_IF_FALSE( IOT_NETWORK_FAILURE, net != NULL );
+    IOT_SET_AND_GOTO_CLEANUP_IF_FALSE(IOT_NETWORK_FAILURE, net != NULL);
 
     res = conn->socket.open(net);
-    IOT_SET_AND_GOTO_CLEANUP_IF_FALSE( IOT_NETWORK_FAILURE, res == NSAPI_ERROR_OK );
+    IOT_SET_AND_GOTO_CLEANUP_IF_FALSE(IOT_NETWORK_FAILURE, res == NSAPI_ERROR_OK);
 
     conn->socket.set_hostname(pServerInfo.hostname);
-    conn->socket.set_root_ca_cert(pCredentialInfo.rootCA);
+    conn->socket.set_root_ca_cert(pCredentialInfo.rootCA,
+                                  pCredentialInfo.rootCALen);
+
+    // Use the API with lengths to be able to provide DER encoded certificates
     conn->socket.set_client_cert_key(pCredentialInfo.clientCrt,
-                                pCredentialInfo.clientKey);
+                                     pCredentialInfo.clientCrtLen,
+                                     pCredentialInfo.clientKey,
+                                     pCredentialInfo.clientKeyLen);
 
     /*
     // if port 443 alpn protocol is requested.
@@ -137,20 +147,20 @@ static IotNetworkError_t network_new(IotNetworkServerInfo_t pServerInfo,
         }
     }
     */
- 
+
     {
         SocketAddress addr;
         res = net->gethostbyname(pServerInfo.hostname, &addr);
         if (res != NSAPI_ERROR_OK) {
             tr_error("Error! DNS resolution for %s failed with %d", pServerInfo.hostname, res);
-            IOT_SET_AND_GOTO_CLEANUP( IOT_NETWORK_FAILURE );
+            IOT_SET_AND_GOTO_CLEANUP(IOT_NETWORK_FAILURE);
         }
         addr.set_port(pServerInfo.port);
 
         res = conn->socket.connect(addr);
         if (NSAPI_ERROR_OK != res) {
             tr_error("failed to connect with : %d", res);
-            IOT_SET_AND_GOTO_CLEANUP( IOT_NETWORK_FAILURE );
+            IOT_SET_AND_GOTO_CLEANUP(IOT_NETWORK_FAILURE);
         }
     }
 
@@ -159,34 +169,37 @@ static IotNetworkError_t network_new(IotNetworkServerInfo_t pServerInfo,
         delete conn;
     } else {
         conn->thread.start({conn, &NetworkConnection::event_dispatcher_thread});
-        *pConnection = conn; 
+        *pConnection = conn;
     }
     IOT_FUNCTION_CLEANUP_END();
 }
 
 static IotNetworkError_t network_set_receive_callback(IotNetworkConnection_t pConnection,
                                                       IotNetworkReceiveCallback_t receiveCallback,
-                                                      void * pContext) {
+                                                      void *pContext)
+{
     pConnection->mtx.lock();
     pConnection->on_recv_ctx = pContext;
     pConnection->on_recv = receiveCallback;
-    pConnection->socket.sigio({ pConnection, &NetworkConnection::on_event });
+    pConnection->socket.sigio({pConnection, &NetworkConnection::on_event});
     pConnection->mtx.unlock();
-    return IOT_NETWORK_SUCCESS; 
+    return IOT_NETWORK_SUCCESS;
 }
 static IotNetworkError_t network_set_close_callback(IotNetworkConnection_t pConnection,
                                                     IotNetworkCloseCallback_t closeCallback,
-                                                    void * pContext){
+                                                    void *pContext)
+{
     pConnection->mtx.lock();
     pConnection->on_close_ctx = pContext;
     pConnection->on_close = closeCallback;
-    pConnection->socket.sigio({ pConnection, &NetworkConnection::on_event });
+    pConnection->socket.sigio({pConnection, &NetworkConnection::on_event});
     pConnection->mtx.unlock();
-    return IOT_NETWORK_SUCCESS; 
+    return IOT_NETWORK_SUCCESS;
 }
 static size_t network_send(IotNetworkConnection_t pConnection,
-                           const uint8_t * pMessage,
-                           size_t messageLength){
+                           const uint8_t *pMessage,
+                           size_t messageLength)
+{
     pConnection->mtx.lock();
     auto res = pConnection->socket.send(pMessage, messageLength);
     pConnection->mtx.unlock();
@@ -194,30 +207,34 @@ static size_t network_send(IotNetworkConnection_t pConnection,
         tr_error("failed to send data with %d", res);
         return 0;
     }
-    
+
     return (size_t)res;
 }
 static size_t network_recv(IotNetworkConnection_t pConnection,
-                           uint8_t * pBuffer,
-                           size_t bytesRequested){
+                           uint8_t *pBuffer,
+                           size_t bytesRequested)
+{
     assert(bytesRequested < INT32_MAX);
 
     pConnection->mtx.lock();
-    pConnection->socket.set_blocking(false);
+    pConnection->socket.set_blocking(true); // socket.recv is blocking
     auto res = pConnection->socket.recv(pBuffer, bytesRequested);
-    pConnection->socket.set_blocking(true);
     pConnection->mtx.unlock();
 
     if (res < 0) {
         tr_error("failed to recv data with %d", res);
-        return 0;
+        return res;
+    } else if (res == 0) {
+        tr_error("network_recv: peer sent close notify");
+        return -1;
     } else if (res != (int)bytesRequested) {
         tr_warning("Unexpected recv length (got %u, expected %u)", res, bytesRequested);
     }
-    
+
     return (size_t)res;
 }
-static IotNetworkError_t network_close(IotNetworkConnection_t pConnection){
+static IotNetworkError_t network_close(IotNetworkConnection_t pConnection)
+{
     if (pConnection != NULL) {
         pConnection->flags.set((uint32_t)NetworkConnection::Flags::termination);
         pConnection->thread.join();
@@ -228,18 +245,19 @@ static IotNetworkError_t network_close(IotNetworkConnection_t pConnection){
         pConnection->mtx.unlock();
     }
 
-    return IOT_NETWORK_SUCCESS; 
+    return IOT_NETWORK_SUCCESS;
 }
-static IotNetworkError_t network_delete(IotNetworkConnection_t pConnection){
+static IotNetworkError_t network_delete(IotNetworkConnection_t pConnection)
+{
     network_close(pConnection);
     delete pConnection;
 
-    return IOT_NETWORK_SUCCESS; 
+    return IOT_NETWORK_SUCCESS;
 }
 
-
 namespace aws {
-const IotNetworkInterface_t *get_iot_network_interface() {
+const IotNetworkInterface_t *get_iot_network_interface()
+{
     return &gc_network;
 }
 }
