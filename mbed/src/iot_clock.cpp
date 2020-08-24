@@ -76,6 +76,11 @@ bool IotClock_TimerArm(IotTimer_t *pTimer, uint32_t relativeTimeoutMs, uint32_t 
 void IotClock_TimerDestroy(IotTimer_t *pTimer)
 {
     auto timer = *pTimer;
+    
+    if (pTimer == NULL) {
+        return;
+    }
     timer->event.cancel();
     delete timer;
+    *pTimer = NULL;
 }
