@@ -1,8 +1,8 @@
-# AWS Mbed OS SDK port library
+# AWS IoT SDK port for Mbed OS
 
 This library provides the port of the AWS IoT SDK for Mbed OS. It can be used to connect devices running Mbed OS to the AWS IoT Core service over MQTT.
 
-An example demonstrating the use of this library has been provided as part of the official Mbed OS examples [here](https://github.com/ARMmbed/mbed-os-example-aws.git).
+An example demonstrating the use of this library has been provided as part of the official Mbed OS examples [here](https://github.com/ARMmbed/mbed-os-example-for-aws.git).
 
 ## Summary:
 
