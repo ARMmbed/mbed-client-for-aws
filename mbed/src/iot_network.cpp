@@ -88,11 +88,12 @@ struct NetworkConnection {
             this->mtx.unlock();
             // XXX: I don't think this really safe. cbk & ctx might be freed between the unlock
             // and this call
+            // Note: Currently cbk is always null because the IotMqtt library does not call setCloseCallback
             if (cbk != NULL) {
                 cbk(this, IOT_NETWORK_UNKNOWN_CLOSED, ctx); 
             }
         }
-        tr_debug("exiting dispatcher thread.");
+        tr_info("Exiting event_dispatcher_thread");
     }
 };
 
@@ -167,6 +168,7 @@ static IotNetworkError_t network_new(IotNetworkServerInfo_t pServerInfo,
 static IotNetworkError_t network_set_receive_callback(IotNetworkConnection_t pConnection,
                                                       IotNetworkReceiveCallback_t receiveCallback,
                                                       void * pContext) {
+    tr_info("Setting network receive callback");
     pConnection->mtx.lock();
     pConnection->on_recv_ctx = pContext;
     pConnection->on_recv = receiveCallback;
@@ -177,6 +179,8 @@ static IotNetworkError_t network_set_receive_callback(IotNetworkConnection_t pCo
 static IotNetworkError_t network_set_close_callback(IotNetworkConnection_t pConnection,
                                                     IotNetworkCloseCallback_t closeCallback,
                                                     void * pContext){
+    // Note: Currently the IotMqtt library does not call this function
+    tr_info("Setting network close callback");
     pConnection->mtx.lock();
     pConnection->on_close_ctx = pContext;
     pConnection->on_close = closeCallback;
@@ -211,17 +215,20 @@ static size_t network_recv(IotNetworkConnection_t pConnection,
     if (res < 0) {
         tr_error("failed to recv data with %d", res);
         return 0;
+    } else if (res == 0) {
+        tr_warning("peer closed socket");
     } else if (res != (int)bytesRequested) {
         tr_warning("Unexpected recv length (got %u, expected %u)", res, bytesRequested);
     }
-    
+
     return (size_t)res;
 }
 static IotNetworkError_t network_close(IotNetworkConnection_t pConnection){
     if (pConnection != NULL) {
+        // Note: this function can be called by different threads - the main application thread to
+        // disconnect the connection or the IotMqtt library as part of error handling, so we defer
+        // thread.join() until network_delete. 
         pConnection->flags.set((uint32_t)NetworkConnection::Flags::termination);
-        pConnection->thread.join();
-
         pConnection->mtx.lock();
         pConnection->socket.sigio(nullptr);
         pConnection->socket.close();
@@ -231,7 +238,10 @@ static IotNetworkError_t network_close(IotNetworkConnection_t pConnection){
     return IOT_NETWORK_SUCCESS; 
 }
 static IotNetworkError_t network_delete(IotNetworkConnection_t pConnection){
-    network_close(pConnection);
+    if (pConnection != NULL) {
+        pConnection->flags.set((uint32_t)NetworkConnection::Flags::termination);
+        pConnection->thread.join();
+    }
     delete pConnection;
 
     return IOT_NETWORK_SUCCESS; 
