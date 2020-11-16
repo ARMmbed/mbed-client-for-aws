@@ -180,7 +180,7 @@ static IotNetworkError_t network_set_close_callback(IotNetworkConnection_t pConn
                                                     IotNetworkCloseCallback_t closeCallback,
                                                     void * pContext){
     // Note: Currently the IotMqtt library does not call this function
-    tr_info("Setting network close callback");
+    tr_debug("Setting network close callback");
     pConnection->mtx.lock();
     pConnection->on_close_ctx = pContext;
     pConnection->on_close = closeCallback;
