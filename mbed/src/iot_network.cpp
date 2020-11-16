@@ -168,7 +168,7 @@ static IotNetworkError_t network_new(IotNetworkServerInfo_t pServerInfo,
 static IotNetworkError_t network_set_receive_callback(IotNetworkConnection_t pConnection,
                                                       IotNetworkReceiveCallback_t receiveCallback,
                                                       void * pContext) {
-    tr_info("Setting network receive callback");
+    tr_debug("Setting network receive callback");
     pConnection->mtx.lock();
     pConnection->on_recv_ctx = pContext;
     pConnection->on_recv = receiveCallback;
