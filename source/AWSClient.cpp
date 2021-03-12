@@ -181,8 +181,8 @@ void AWSClient::eventCallbackStatic(MQTTContext_t *pMqttContext,
 
             /* Any other packet type is invalid. */
             default:
-                LogError(("Unknown packet type received:(%02x).\n",
-                          pPacketInfo->type));
+                tr_error("Unknown packet type received:(%02x)",
+                         pPacketInfo->type);
         }
     }
 }
