@@ -1,0 +1,33 @@
+{
+    "name": "aws-client",
+    "config": {
+        "socket-timeout": {
+            "help": "MQTT socket timeout",
+            "value": "5s"
+        },
+        "keepalive": {
+            "help": "MQTT keep-alive time",
+            "value": "60s"
+        },
+        "port": {
+            "help": "MQTT port",
+            "value": 8883
+        },
+        "clean-session": {
+            "help": "MQTT clean session",
+            "value": true
+        },
+        "buffer-size": {
+            "help": "MQTT buffer size",
+            "value": 1024
+        },
+        "shadow-topic-max-size": {
+            "help": "Maximum length of the shadow topic",
+            "value": 256
+        },
+        "shadow-get-response-max-size": {
+            "help": "Maximum length of the shadow get response",
+            "value": 1024
+        }
+    }
+}
