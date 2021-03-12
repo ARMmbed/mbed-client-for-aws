@@ -38,7 +38,6 @@ extern "C"
 
 using namespace std;
 using namespace mbed;
-using namespace rtos::Kernel;
 
 /**
  * @brief Network send port function.
@@ -75,9 +74,9 @@ static int32_t Mbed_Recv(NetworkContext_t *pNetworkContext, void *pBuffer, size_
  *
  * Interface defined by SDK.
  */
-uint32_t Mbed_GetTimeMs(void)
+static uint32_t Mbed_GetTimeMs(void)
 {
-    return get_ms_count();
+    return rtos::Kernel::Clock::now().time_since_epoch().count();
 }
 
 void AWSClient::eventCallbackStatic(MQTTContext_t *pMqttContext,
