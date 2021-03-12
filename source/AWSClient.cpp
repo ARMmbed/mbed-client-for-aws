@@ -228,13 +228,15 @@ int AWSClient::init(Callback<void(string, string)> subCallback,
         return ret;
     }
 
-    // Set backup root certificate
-    ret = mbedtls_x509_crt_parse(&rootCA,
-                                 reinterpret_cast<const unsigned char *>(creds.rootCrtBackup),
-                                 creds.rootCrtBackupLen);
-    if (ret != MBED_SUCCESS) {
-        tr_warn("parse backup root CA failed with %d", ret);
-        // This is not fatal, continue without backup root certificate
+    if (creds.rootCrtBackup) {
+        // Set backup root certificate
+        ret = mbedtls_x509_crt_parse(&rootCA,
+                                     reinterpret_cast<const unsigned char *>(creds.rootCrtBackup),
+                                     creds.rootCrtBackupLen);
+        if (ret != MBED_SUCCESS) {
+            tr_warn("parse backup root CA failed with %d", ret);
+            // This is not fatal, continue without backup root certificate
+        }
     }
 
     return MBED_SUCCESS;

@@ -93,12 +93,14 @@ public:
 
         /**
          * @brief Backup Root CA
+         * @note Optional
          */
-        const char *rootCrtBackup;
+        const char *rootCrtBackup = nullptr;
         /**
          * @brief Buffer size of rootCrtBackup
+         * @note Optional
          */
-        size_t rootCrtBackupLen;
+        size_t rootCrtBackupLen = 0;
     };
 
     /**
