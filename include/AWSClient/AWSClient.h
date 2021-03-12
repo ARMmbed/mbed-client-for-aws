@@ -64,13 +64,40 @@ public:
      * @brief TLS credentials container.
      */
     struct TLSCredentials_t {
+        /**
+         * @brief Client certificate
+         */
         const char *clientCrt;
+        /**
+         * @brief Buffer size of clientCrt
+         */
         size_t clientCrtLen;
+
+        /**
+         * @brief Client key
+         */
         const char *clientKey;
+        /**
+         * @brief Buffer size of clientKey
+         */
         size_t clientKeyLen;
+
+        /**
+         * @brief Main Root CA
+         */
         const char *rootCrtMain;
+        /**
+         * @brief Buffer size of rootCrtMain
+         */
         size_t rootCrtMainLen;
+
+        /**
+         * @brief Backup Root CA
+         */
         const char *rootCrtBackup;
+        /**
+         * @brief Buffer size of rootCrtBackup
+         */
         size_t rootCrtBackupLen;
     };
 
