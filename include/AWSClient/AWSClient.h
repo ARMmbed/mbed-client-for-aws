@@ -128,11 +128,11 @@ public:
      * Initializes the SDK.
      * Parses the root CAs and stores them.
      *
-     * @param subCallback Subscription callback (topic, payload).
+     * @param subCallback Subscription callback (topic, topic length, payload, payload length).
      * @param creds Credentials containing the root CA.
      * @return MBED_SUCCESS on success.
      */
-    int init(mbed::Callback<void(std::string, std::string)> subCallback,
+    int init(mbed::Callback<void(const char *, uint16_t, const void *, size_t)> subCallback,
              const TLSCredentials_t &creds);
 
     /**
@@ -153,8 +153,8 @@ public:
      */
     int connect(NetworkInterface *net,
                 const TLSCredentials_t &creds,
-                const std::string hostname,
-                const std::string clientID);
+                const char *hostname,
+                const char *clientID);
 
     /**
      * @brief Check if the MQTT client is connected.
@@ -186,7 +186,7 @@ public:
      *
      * @return Thing name.
      */
-    std::string getThingName();
+    const char *getThingName();
 
     /**
      * @brief Subscribes to a topic filter.
@@ -194,28 +194,32 @@ public:
      * TODO char array variant would be more efficient in some cases
      *
      * @param topicFilter Topic filter.
+     * @param topicFilterLength Length of the topic filter.
      * @param qos QoS.
      * @return MBED_SUCCESS on success.
      */
-    int subscribe(const std::string topicFilter, const MQTTQoS qos = MQTTQoS0);
+    int subscribe(const char *topicFilter, uint16_t topicFilterLength, const MQTTQoS qos = MQTTQoS0);
 
     /**
      * @brief Unsubscribes from a topic filter.
      *
      * @param topicFilter Topic filter.
+     * @param topicFilterLength Length of the topic filter.
      * @return MBED_SUCCESS on success.
      */
-    int unsubscribe(const std::string topicFilter);
+    int unsubscribe(const char *topicFilter, uint16_t topicFilterLength);
 
     /**
      * @brief Publishes to a topic.
      *
      * @param topic Topic to publish to.
-     * @param msg Message to publish.
+     * @param topic_length Lenght of the topic.
+     * @param payload Payload to publish.
+     * @param payload_length Length of the payload.
      * @param qos QoS.
      * @return MBED_SUCCESS on success.
      */
-    int publish(const std::string topic, const std::string msg, const MQTTQoS qos = MQTTQoS0);
+    int publish(const char *topic, uint16_t topic_length, const void *payload, size_t payload_length, const MQTTQoS qos = MQTTQoS0);
 
     /**
      * @brief Processes all of the pending incoming messages.
@@ -245,18 +249,21 @@ public:
      * Tip: use stoi() to convert the value to integer in case an integer is expected.
      *
      * @param key Key of value to retrieve.
-     * @param value Desired value extracted from the shadow.
+     * @param key_length Length of the key.
+     * @param value A pointer to the desired value extracted from the shadow will be output to *value.
+     * @param value_length The length of the value will be stored to *value_length.
      * @return MBED_SUCCESS on success.
      */
-    int getShadowDesiredValue(std::string key, std::string &value);
+    int getShadowDesiredValue(const char *key, size_t key_length, char **value, size_t *value_length);
 
     /**
      * @brief Publishes an update to the device shadow.
      *
      * @param updateDocument Update document to be published.
+     * @param length Length of the update document.
      * @return MBED_SUCCESS on success.
      */
-    int updateShadowDocument(std::string updateDocument);
+    int updateShadowDocument(const char *updateDocument, size_t length);
 
     /**
      * @brief Publishes the reported value of the given key to the device shadow.
@@ -264,10 +271,12 @@ public:
      * Constructs the update document and calls updateShadowDocument().
      *
      * @param key Key of the value to publish.
+     * @param key_length Length of the key.
      * @param value String to publish. Quotation marks will be added automatically.
+     * @param value_length Length of the value.
      * @return MBED_SUCCESS on success.
      */
-    int publishShadowReportedValue(std::string key, std::string value);
+    int publishShadowReportedValue(const char *key, size_t key_length, const char *value, size_t value_length);
 
     /**
      * @brief Publishes the reported value of the given key to the device shadow.
@@ -275,10 +284,11 @@ public:
      * Constructs the update document and calls updateShadowDocument().
      *
      * @param key Key of value to publish.
+     * @param key_length Length of the key.
      * @param value Integer value to publish.
      * @return MBED_SUCCESS on success.
      */
-    int publishShadowReportedValue(std::string key, int value);
+    int publishShadowReportedValue(const char *key, size_t key_length, int value);
 
 private:
     /**
@@ -316,7 +326,7 @@ private:
     /**
      * @brief Application callback for subscription events.
      */
-    mbed::Callback<void(std::string, std::string)> subCallback;
+    mbed::Callback<void(const char *, uint16_t, const void *, size_t)> subCallback;
 
     /**
      * @brief Static callback to provide to the SDK.
@@ -332,10 +342,8 @@ private:
      * @brief Thing name.
      *
      * Should be the same as the MQTT client ID.
-     *
-     * TODO check memory safety of this (string vs char array)
      */
-    std::string thingName;
+    const char *thingName;
 
     bool shadowGetAccepted;
 

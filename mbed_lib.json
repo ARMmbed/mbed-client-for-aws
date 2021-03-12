@@ -28,6 +28,14 @@
         "shadow-get-response-max-size": {
             "help": "Maximum length of the shadow get response",
             "value": 1024
+        },
+        "json-query-max-size": {
+            "help": "Maximum length of a JSON query",
+            "value": 256
+        },
+        "shadow-update-document-max-size": {
+            "help": "Maximum length of a shadow update document",
+            "value": 1024
         }
     }
 }

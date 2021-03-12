@@ -143,10 +143,10 @@ void AWSClient::eventCallbackStatic(MQTTContext_t *pMqttContext,
         }
         // Not a shadow topic, forward to the callback
         else {
-            awsClient.subCallback(string(pPublishInfo->pTopicName,
-                                         pPublishInfo->topicNameLength),
-                                  string((char *)pPublishInfo->pPayload,
-                                         pPublishInfo->payloadLength));
+            awsClient.subCallback(pPublishInfo->pTopicName,
+                                  pPublishInfo->topicNameLength,
+                                  pPublishInfo->pPayload,
+                                  pPublishInfo->payloadLength);
         }
     } else {
         /* Handle other packets. */
@@ -187,7 +187,7 @@ void AWSClient::eventCallbackStatic(MQTTContext_t *pMqttContext,
     }
 }
 
-int AWSClient::init(Callback<void(string, string)> subCallback,
+int AWSClient::init(Callback<void(const char *, uint16_t, const void *, size_t)> subCallback,
                     const TLSCredentials_t &creds)
 {
     // Set subscription callback
@@ -243,8 +243,8 @@ int AWSClient::init(Callback<void(string, string)> subCallback,
 
 int AWSClient::connect(NetworkInterface *net,
                        const TLSCredentials_t &creds,
-                       const string hostname,
-                       const string clientID)
+                       const char *hostname,
+                       const char *clientID)
 {
     if (net == NULL) {
         tr_error("No network interface provided.");
@@ -259,7 +259,7 @@ int AWSClient::connect(NetworkInterface *net,
     new (&networkContext.socket) TLSSocket();
 
     // Set hostname
-    networkContext.socket.set_hostname(hostname.c_str());
+    networkContext.socket.set_hostname(hostname);
 
     // Set credentials
     networkContext.socket.set_client_cert_key(creds.clientCrt,
@@ -283,7 +283,7 @@ int AWSClient::connect(NetworkInterface *net,
 
     // Get IP address from DNS server
     SocketAddress addr;
-    ret = net->gethostbyname(hostname.c_str(), &addr);
+    ret = net->gethostbyname(hostname, &addr);
     if (ret != MBED_SUCCESS) {
         tr_error("gethostbyname error: %d", ret);
         return ret;
@@ -309,8 +309,8 @@ int AWSClient::connect(NetworkInterface *net,
     thingName = clientID;
 
     MQTTConnectInfo_t connectInfo = {};
-    connectInfo.pClientIdentifier = clientID.c_str();
-    connectInfo.clientIdentifierLength = clientID.length();
+    connectInfo.pClientIdentifier = clientID;
+    connectInfo.clientIdentifierLength = strlen(clientID);
     connectInfo.cleanSession = MBED_CONF_AWS_CLIENT_CLEAN_SESSION;
     connectInfo.keepAliveSeconds = std::chrono::duration_cast<std::chrono::seconds>(MBED_CONF_AWS_CLIENT_KEEPALIVE).count();
 
@@ -351,18 +351,18 @@ MQTTContext_t AWSClient::getMQTTContext()
     return mqttContext;
 }
 
-string AWSClient::getThingName()
+const char *AWSClient::getThingName()
 {
     return thingName;
 }
 
-int AWSClient::subscribe(const string topicFilter, const MQTTQoS qos)
+int AWSClient::subscribe(const char *topicFilter, uint16_t topicFilterLength, const MQTTQoS qos)
 {
     // Currently only support single subscriptions
     MQTTSubscribeInfo_t subscribeList[1];
     subscribeList[0].qos = qos;
-    subscribeList[0].pTopicFilter = topicFilter.c_str();
-    subscribeList[0].topicFilterLength = topicFilter.length();
+    subscribeList[0].pTopicFilter = topicFilter;
+    subscribeList[0].topicFilterLength = topicFilterLength;
 
     auto packetId = MQTT_GetPacketId(&mqttContext);
 
@@ -382,12 +382,12 @@ int AWSClient::subscribe(const string topicFilter, const MQTTQoS qos)
     return status;
 }
 
-int AWSClient::unsubscribe(const string topicFilter)
+int AWSClient::unsubscribe(const char *topicFilter, uint16_t topicFilterLength)
 {
     // Currently only support single subscriptions
     MQTTSubscribeInfo_t unsubscribeList[1];
-    unsubscribeList[0].pTopicFilter = topicFilter.c_str();
-    unsubscribeList[0].topicFilterLength = topicFilter.length();
+    unsubscribeList[0].pTopicFilter = topicFilter;
+    unsubscribeList[0].topicFilterLength = topicFilterLength;
 
     auto packetId = MQTT_GetPacketId(&mqttContext);
 
@@ -407,14 +407,14 @@ int AWSClient::unsubscribe(const string topicFilter)
     return status;
 }
 
-int AWSClient::publish(const string topic, const string msg, const MQTTQoS qos)
+int AWSClient::publish(const char *topic, uint16_t topic_length, const void *payload, size_t payload_length, const MQTTQoS qos)
 {
     MQTTPublishInfo_t publishInfo = {};
     publishInfo.qos = qos;
-    publishInfo.pTopicName = topic.c_str();
-    publishInfo.topicNameLength = topic.length();
-    publishInfo.pPayload = msg.c_str();
-    publishInfo.payloadLength = msg.length();
+    publishInfo.pTopicName = topic;
+    publishInfo.topicNameLength = topic_length;
+    publishInfo.pPayload = payload;
+    publishInfo.payloadLength = payload_length;
 
     // TODO check for length limit
 
@@ -458,39 +458,46 @@ int AWSClient::processResponses()
     return MBED_SUCCESS;
 }
 
-int AWSClient::getShadowDesiredValue(string key, string &value)
+int AWSClient::getShadowDesiredValue(const char *key, size_t key_length, char **value, size_t *value_length)
 {
     // Construct JSON search key
-    key = "state.desired." + key;
-
-    char *val;
-    size_t valLen;
+    const char query_base[] = "state.desired.";
+    char query[MBED_CONF_AWS_CLIENT_JSON_QUERY_MAX_SIZE];
+    if (strlen(query_base) + key_length + 1 /*'\0'*/ > MBED_CONF_AWS_CLIENT_JSON_QUERY_MAX_SIZE) {
+        tr_error("Failed to construct JSON query, the key or value might be too long");
+        return MBED_ERROR_INVALID_SIZE;
+    }
+    sprintf(query, "%.*s%.*s", strlen(query_base), query_base, key_length, key);
 
     // Search for the key in the document
     auto ret = JSON_Search(shadowGetResponse, sizeof(shadowGetResponse),
-                           key.c_str(), key.length(),
-                           &val, &valLen);
+                           query, strlen(query),
+                           value, value_length);
     if (ret == JSONNotFound) {
-        tr_info("JSON key %s not found", key.c_str());
+        tr_info("JSON key %s not found", key);
         return ret;
     } else if (ret != JSONSuccess) {
         tr_error("JSON_Search error: %d", ret);
         return ret;
     }
 
-    // Set the output string
-    value = string(val, valLen);
-
     return MBED_SUCCESS;
 }
 
-int AWSClient::publishShadowReportedValue(string key, string value)
+int AWSClient::publishShadowReportedValue(const char *key, size_t key_length, const char *value, size_t value_length)
 {
     // Construct update document
-    string updateDocument = "{\"state\":{\"reported\":{\"" + key + "\":\"" + value + "\"}}}";
+    char updateDocument[MBED_CONF_AWS_CLIENT_SHADOW_UPDATE_DOCUMENT_MAX_SIZE];
+    const size_t query_base_length = 30;
+    if (query_base_length + key_length + value_length + 1 /*'\0'*/ > MBED_CONF_AWS_CLIENT_SHADOW_UPDATE_DOCUMENT_MAX_SIZE) {
+        tr_error("Failed to construct an update document, key or value too long");
+        return MBED_ERROR_INVALID_SIZE;
+    }
+    sprintf(updateDocument, "{\"state\":{\"reported\":{\"%.*s\":\"%.*s\"}}}",
+            key_length, key, value_length, value);
 
     // Publish update document
-    auto ret = updateShadowDocument(updateDocument);
+    auto ret = updateShadowDocument(updateDocument, strlen(updateDocument));
     if (ret != 0) {
         tr_error("updateShadowDocument error: %d", ret);
         return ret;
@@ -499,13 +506,22 @@ int AWSClient::publishShadowReportedValue(string key, string value)
     return MBED_SUCCESS;
 }
 
-int AWSClient::publishShadowReportedValue(string key, int value)
+int AWSClient::publishShadowReportedValue(const char *key, size_t key_length, int value)
 {
     // Construct update document
-    string updateDocument = "{\"state\":{\"reported\":{\"" + key + "\":" + std::to_string(value) + "}}}";
+    char updateDocument[MBED_CONF_AWS_CLIENT_SHADOW_UPDATE_DOCUMENT_MAX_SIZE];
+    const size_t query_base_length = 28;
+    const size_t value_length = 11; // int string can be -2147483648
+    if (query_base_length + key_length + value_length + 1 /*'\0'*/
+            > MBED_CONF_AWS_CLIENT_SHADOW_UPDATE_DOCUMENT_MAX_SIZE) {
+        tr_error("Failed to create Shadow update document: key too long");
+        return MBED_ERROR_INVALID_SIZE;
+    }
+    sprintf(updateDocument, "{\"state\":{\"reported\":{\"%.*s\":%d}}}",
+            key_length, key, value);
 
     // Publish update document
-    auto ret = updateShadowDocument(updateDocument);
+    auto ret = updateShadowDocument(updateDocument, strlen(updateDocument));
     if (ret != 0) {
         tr_error("updateShadowDocument error: %d", ret);
         return ret;
@@ -528,8 +544,8 @@ int AWSClient::downloadShadowDocument()
 
     // Construct get/accepted topic
     auto shadowStatus = Shadow_GetTopicString(ShadowTopicStringTypeGetAccepted,
-                                              thingName.c_str(),
-                                              thingName.length(),
+                                              thingName,
+                                              strlen(thingName),
                                               getAcceptedTopicBuffer,
                                               sizeof(getAcceptedTopicBuffer),
                                               &getAcceptedTopicLength);
@@ -540,8 +556,8 @@ int AWSClient::downloadShadowDocument()
 
     // Construct get/rejected topic
     shadowStatus = Shadow_GetTopicString(ShadowTopicStringTypeGetRejected,
-                                         thingName.c_str(),
-                                         thingName.length(),
+                                         thingName,
+                                         strlen(thingName),
                                          getRejectedTopicBuffer,
                                          sizeof(getRejectedTopicBuffer),
                                          &getRejectedTopicLength);
@@ -552,8 +568,8 @@ int AWSClient::downloadShadowDocument()
 
     // Construct get topic
     shadowStatus = Shadow_GetTopicString(ShadowTopicStringTypeGet,
-                                         thingName.c_str(),
-                                         thingName.length(),
+                                         thingName,
+                                         strlen(thingName),
                                          getTopicBuffer,
                                          sizeof(getTopicBuffer),
                                          &getTopicLength);
@@ -563,21 +579,21 @@ int AWSClient::downloadShadowDocument()
     }
 
     // Subscribe to get/accepted topic
-    auto ret = subscribe(string(getAcceptedTopicBuffer, getAcceptedTopicLength));
+    auto ret = subscribe(getAcceptedTopicBuffer, getAcceptedTopicLength);
     if (ret != 0) {
         tr_error("subscribe error: %d", ret);
         return ret;
     }
 
     // Subscribe to get/rejected topic
-    ret = subscribe(string(getRejectedTopicBuffer, getRejectedTopicLength));
+    ret = subscribe(getRejectedTopicBuffer, getRejectedTopicLength);
     if (ret != 0) {
         tr_error("subscribe error: %d", ret);
         goto unsubscribeAndReturn;
     }
 
     // Publish to update topic
-    ret = publish(string(getTopicBuffer, getTopicLength), string());
+    ret = publish(getTopicBuffer, getTopicLength, nullptr, 0);
     if (ret != 0) {
         tr_error("publish error: %d", ret);
         goto unsubscribeAndReturn;
@@ -599,14 +615,14 @@ int AWSClient::downloadShadowDocument()
 unsubscribeAndReturn:
 
     // Unsubscribe from topics
-    unsubscribe(string(getAcceptedTopicBuffer, getAcceptedTopicLength));
-    unsubscribe(string(getRejectedTopicBuffer, getRejectedTopicLength));
+    unsubscribe(getAcceptedTopicBuffer, getAcceptedTopicLength);
+    unsubscribe(getRejectedTopicBuffer, getRejectedTopicLength);
 
     // Return result
     return ret;
 }
 
-int AWSClient::updateShadowDocument(string updateDocument)
+int AWSClient::updateShadowDocument(const char *updateDocument, size_t length)
 {
     static char updateAcceptedTopicBuffer[MBED_CONF_AWS_CLIENT_SHADOW_TOPIC_MAX_SIZE] = {0};
     uint16_t updateAcceptedTopicLength = 0;
@@ -620,8 +636,8 @@ int AWSClient::updateShadowDocument(string updateDocument)
 
     // Construct update/accepted topic
     auto shadowStatus = Shadow_GetTopicString(ShadowTopicStringTypeUpdateAccepted,
-                                              thingName.c_str(),
-                                              thingName.length(),
+                                              thingName,
+                                              strlen(thingName),
                                               updateAcceptedTopicBuffer,
                                               sizeof(updateAcceptedTopicBuffer),
                                               &updateAcceptedTopicLength);
@@ -632,8 +648,8 @@ int AWSClient::updateShadowDocument(string updateDocument)
 
     // Construct update/rejected topic
     shadowStatus = Shadow_GetTopicString(ShadowTopicStringTypeUpdateRejected,
-                                         thingName.c_str(),
-                                         thingName.length(),
+                                         thingName,
+                                         strlen(thingName),
                                          updateRejectedTopicBuffer,
                                          sizeof(updateRejectedTopicBuffer),
                                          &updateRejectedTopicLength);
@@ -644,8 +660,8 @@ int AWSClient::updateShadowDocument(string updateDocument)
 
     // Construct update topic
     shadowStatus = Shadow_GetTopicString(ShadowTopicStringTypeUpdate,
-                                         thingName.c_str(),
-                                         thingName.length(),
+                                         thingName,
+                                         strlen(thingName),
                                          updateTopicBuffer,
                                          sizeof(updateTopicBuffer),
                                          &updateTopicLength);
@@ -655,21 +671,21 @@ int AWSClient::updateShadowDocument(string updateDocument)
     }
 
     // Subscribe to update/accepted topic
-    auto ret = subscribe(string(updateAcceptedTopicBuffer, updateAcceptedTopicLength));
+    auto ret = subscribe(updateAcceptedTopicBuffer, updateAcceptedTopicLength);
     if (ret != 0) {
         tr_error("subscribe error: %d", ret);
         return ret;
     }
 
     // Subscribe to update/rejected topic
-    ret = subscribe(string(updateRejectedTopicBuffer, updateRejectedTopicLength));
+    ret = subscribe(updateRejectedTopicBuffer, updateRejectedTopicLength);
     if (ret != 0) {
         tr_error("subscribe error: %d", ret);
         goto unsubscribeAndReturn;
     }
 
     // Publish to update topic
-    ret = publish(string(updateTopicBuffer, updateTopicLength), updateDocument);
+    ret = publish(updateTopicBuffer, updateTopicLength, updateDocument, length);
     if (ret != 0) {
         tr_error("publish error: %d", ret);
         goto unsubscribeAndReturn;
@@ -691,8 +707,8 @@ int AWSClient::updateShadowDocument(string updateDocument)
 unsubscribeAndReturn:
 
     // Unsubscribe from topics
-    unsubscribe(string(updateAcceptedTopicBuffer, updateAcceptedTopicLength));
-    unsubscribe(string(updateRejectedTopicBuffer, updateRejectedTopicLength));
+    unsubscribe(updateAcceptedTopicBuffer, updateAcceptedTopicLength);
+    unsubscribe(updateRejectedTopicBuffer, updateRejectedTopicLength);
 
     // Return result
     return ret;
