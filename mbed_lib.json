@@ -1,6 +1,10 @@
 {
     "name": "aws-client",
     "config": {
+        "aws-sdk-trace": {
+            "help": "Enable AWS SDK tracing",
+            "value": false
+        },
         "socket-timeout": {
             "help": "MQTT socket timeout",
             "value": "5s"
