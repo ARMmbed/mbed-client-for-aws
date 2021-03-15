@@ -21,6 +21,10 @@
             "help": "MQTT buffer size",
             "value": 1024
         },
+        "shadow": {
+            "help": "Build the AWS IoT Device Shadow service support",
+            "value": false
+        },
         "shadow-topic-max-size": {
             "help": "Maximum length of the shadow topic",
             "value": 256

@@ -101,6 +101,7 @@ void AWSClient::eventCallbackStatic(MQTTContext_t *pMqttContext,
         MBED_ASSERT(pDeserializedInfo->pPublishInfo != NULL);
         MQTTPublishInfo_t *pPublishInfo = pDeserializedInfo->pPublishInfo;
 
+#if MBED_CONF_AWS_CLIENT_SHADOW
         /* Let the Device Shadow library tell us whether this is a device shadow message. */
         ShadowMessageType_t messageType = ShadowMessageTypeMaxNum;
         const char *pThingName = NULL;
@@ -142,7 +143,9 @@ void AWSClient::eventCallbackStatic(MQTTContext_t *pMqttContext,
             }
         }
         // Not a shadow topic, forward to the callback
-        else {
+        else
+#endif // MBED_CONF_AWS_CLIENT_SHADOW
+        {
             awsClient.subCallback(pPublishInfo->pTopicName,
                                   pPublishInfo->topicNameLength,
                                   pPublishInfo->pPayload,
@@ -458,6 +461,8 @@ int AWSClient::processResponses()
     return MBED_SUCCESS;
 }
 
+#if MBED_CONF_AWS_CLIENT_SHADOW
+
 int AWSClient::getShadowDesiredValue(const char *key, size_t key_length, char **value, size_t *value_length)
 {
     // Construct JSON search key
@@ -713,3 +718,5 @@ unsubscribeAndReturn:
     // Return result
     return ret;
 }
+
+#endif // MBED_CONF_AWS_CLIENT_SHADOW

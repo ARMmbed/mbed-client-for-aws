@@ -232,6 +232,8 @@ public:
      */
     int processResponses();
 
+#if MBED_CONF_AWS_CLIENT_SHADOW
+
     /**
      * @brief Retrieves the device shadow document.
      *
@@ -290,6 +292,8 @@ public:
      */
     int publishShadowReportedValue(const char *key, size_t key_length, int value);
 
+#endif // MBED_CONF_AWS_CLIENT_SHADOW
+
 private:
     /**
      * @brief Construct a new AWSClient object
@@ -345,6 +349,8 @@ private:
      */
     const char *thingName;
 
+#if MBED_CONF_AWS_CLIENT_SHADOW
+
     bool shadowGetAccepted;
 
     bool shadowUpdateAccepted;
@@ -356,6 +362,8 @@ private:
      *
      */
     char shadowGetResponse[MBED_CONF_AWS_CLIENT_SHADOW_GET_RESPONSE_MAX_SIZE];
+
+#endif // MBED_CONF_AWS_CLIENT_SHADOW
 };
 
 #endif /* AWS_CLIENT_H */
