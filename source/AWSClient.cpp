@@ -114,7 +114,7 @@ void AWSClient::eventCallbackStatic(MQTTContext_t *pMqttContext,
                                                 &thingNameLength)) {
             switch (messageType) {
                 case ShadowMessageTypeGetAccepted:
-                    tr_info("/get/accepted json payload: %.*s", pPublishInfo->payloadLength, (const char *)pPublishInfo->pPayload);
+                    tr_debug("/get/accepted json payload: %.*s", pPublishInfo->payloadLength, (const char *)pPublishInfo->pPayload);
                     awsClient.shadowGetAccepted = true;
                     // Buffer should be large enough to contain the response.
                     MBED_ASSERT(pPublishInfo->payloadLength < sizeof(awsClient.shadowGetResponse));
@@ -128,7 +128,7 @@ void AWSClient::eventCallbackStatic(MQTTContext_t *pMqttContext,
                     break;
 
                 case ShadowMessageTypeUpdateAccepted:
-                    tr_info("/update/accepted json payload: %.*s", pPublishInfo->payloadLength, (const char *)pPublishInfo->pPayload);
+                    tr_debug("/update/accepted json payload: %.*s", pPublishInfo->payloadLength, (const char *)pPublishInfo->pPayload);
                     awsClient.shadowUpdateAccepted = true;
                     break;
 
@@ -155,31 +155,31 @@ void AWSClient::eventCallbackStatic(MQTTContext_t *pMqttContext,
         /* Handle other packets. */
         switch (pPacketInfo->type) {
             case MQTT_PACKET_TYPE_PUBACK:
-                tr_info("PUBACK");
+                tr_debug("PUBACK");
                 break;
 
             case MQTT_PACKET_TYPE_PUBCOMP:
-                tr_info("PUBCOMP");
+                tr_debug("PUBCOMP");
                 break;
 
             case MQTT_PACKET_TYPE_SUBACK:
-                tr_info("PUBACK");
+                tr_debug("PUBACK");
                 break;
 
             case MQTT_PACKET_TYPE_UNSUBACK:
-                tr_info("UNSUBACK");
+                tr_debug("UNSUBACK");
                 break;
 
             case MQTT_PACKET_TYPE_PUBREC:
-                tr_info("PUBREC");
+                tr_debug("PUBREC");
                 break;
 
             case MQTT_PACKET_TYPE_PUBREL:
-                tr_info("PUBREL");
+                tr_debug("PUBREL");
                 break;
 
             case MQTT_PACKET_TYPE_PINGRESP:
-                tr_info("PINGRESP");
+                tr_debug("PINGRESP");
                 break;
 
             /* Any other packet type is invalid. */
@@ -479,7 +479,7 @@ int AWSClient::getShadowDesiredValue(const char *key, size_t key_length, char **
                            query, strlen(query),
                            value, value_length);
     if (ret == JSONNotFound) {
-        tr_info("JSON key %s not found", key);
+        tr_debug("JSON key %s not found", key);
         return ret;
     } else if (ret != JSONSuccess) {
         tr_error("JSON_Search error: %d", ret);
