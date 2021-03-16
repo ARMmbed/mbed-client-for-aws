@@ -5,48 +5,72 @@
 # coreMQTT
 include(coreMQTT/mqttFilePaths.cmake)
 
-add_library(coreMQTT
-    ${MQTT_SOURCES}
-    ${MQTT_SERIALIZER_SOURCES} 
-)
-            
-target_include_directories(coreMQTT PUBLIC 
-    ${MQTT_INCLUDE_PUBLIC_DIRS} 
-    config 
+add_library(coreMQTT INTERFACE)
+
+target_include_directories(coreMQTT
+    INTERFACE
+        ${MQTT_INCLUDE_PUBLIC_DIRS}
+        source/config
 )
 
-target_link_libraries(coreMQTT
-    mbed-core
+target_sources(coreMQTT
+    INTERFACE
+        ${MQTT_SOURCES}
+        ${MQTT_SERIALIZER_SOURCES}
 )
 
-# shadow
-include(shadow/shadowFilePaths.cmake)
+# Device-Shadow-for-AWS-IoT-embedded-sdk
+include(Device-Shadow-for-AWS-IoT-embedded-sdk/shadowFilePaths.cmake)
 
-add_library(shadow
-    ${SHADOW_SOURCES} 
+add_library(Device-Shadow-for-AWS-IoT-embedded-sdk INTERFACE)
+
+target_include_directories(Device-Shadow-for-AWS-IoT-embedded-sdk
+    INTERFACE
+        ${SHADOW_INCLUDE_PUBLIC_DIRS}
+        source/config
 )
 
-target_include_directories(shadow PUBLIC 
-    ${SHADOW_INCLUDE_PUBLIC_DIRS} 
-    config
-)
-
-target_link_libraries(shadow
-    mbed-core
+target_sources(Device-Shadow-for-AWS-IoT-embedded-sdk
+    INTERFACE
+        ${SHADOW_SOURCES}
 )
 
 # coreJSON
 include(coreJSON/jsonFilePaths.cmake)
 
-add_library(coreJSON
-    ${JSON_SOURCES}
+add_library(coreJSON INTERFACE)
+
+target_include_directories(coreJSON
+    INTERFACE
+        ${JSON_INCLUDE_PUBLIC_DIRS}
+        source/config
 )
 
-target_include_directories(coreJSON PUBLIC 
-    ${JSON_INCLUDE_PUBLIC_DIRS} 
-    config
+target_sources(coreJSON
+    INTERFACE
+        ${JSON_SOURCES}
 )
 
-target_link_libraries(coreJSON
-    mbed-core
+# mbed-client-for-aws
+
+add_library(mbed-client-for-aws INTERFACE)
+
+target_include_directories(mbed-client-for-aws
+    INTERFACE
+        include
+        include/AWSClient
+)
+
+target_sources(mbed-client-for-aws
+    INTERFACE
+        source/AWSClient.cpp
+)
+
+target_link_libraries(mbed-client-for-aws
+    INTERFACE
+        coreMQTT
+        coreJSON
+        Device-Shadow-for-AWS-IoT-embedded-sdk
+        mbed-os
+        mbed-netsocket
 )
