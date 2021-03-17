@@ -479,7 +479,7 @@ int AWSClient::getShadowDesiredValue(const char *key, size_t key_length, char **
                            query, strlen(query),
                            value, value_length);
     if (ret == JSONNotFound) {
-        tr_debug("JSON key %s not found", key);
+        tr_error("JSON key %s not found", key);
         return ret;
     } else if (ret != JSONSuccess) {
         tr_error("JSON_Search error: %d", ret);
@@ -558,6 +558,7 @@ int AWSClient::downloadShadowDocument()
         tr_error("Shadow_GetTopicString error: %d", shadowStatus);
         return shadowStatus;
     }
+    tr_debug("Shadow \"get accepted\" topic: %.*s", getAcceptedTopicLength, getAcceptedTopicBuffer);
 
     // Construct get/rejected topic
     shadowStatus = Shadow_GetTopicString(ShadowTopicStringTypeGetRejected,
@@ -570,6 +571,7 @@ int AWSClient::downloadShadowDocument()
         tr_error("Shadow_GetTopicString error: %d", shadowStatus);
         return shadowStatus;
     }
+    tr_debug("Shadow \"get rejected\" topic: %.*s", getRejectedTopicLength, getRejectedTopicBuffer);
 
     // Construct get topic
     shadowStatus = Shadow_GetTopicString(ShadowTopicStringTypeGet,
@@ -582,6 +584,7 @@ int AWSClient::downloadShadowDocument()
         tr_error("Shadow_GetTopicString error: %d", shadowStatus);
         return shadowStatus;
     }
+    tr_debug("Shadow \"get\" topic: %.*s", getTopicLength, getTopicBuffer);
 
     // Subscribe to get/accepted topic
     auto ret = subscribe(getAcceptedTopicBuffer, getAcceptedTopicLength);
@@ -650,6 +653,7 @@ int AWSClient::updateShadowDocument(const char *updateDocument, size_t length)
         tr_error("Shadow_GetTopicString error: %d", shadowStatus);
         return shadowStatus;
     }
+    tr_debug("Shadow \"update accepted\" topic: %.*s", updateAcceptedTopicLength, updateAcceptedTopicBuffer);
 
     // Construct update/rejected topic
     shadowStatus = Shadow_GetTopicString(ShadowTopicStringTypeUpdateRejected,
@@ -662,6 +666,7 @@ int AWSClient::updateShadowDocument(const char *updateDocument, size_t length)
         tr_error("Shadow_GetTopicString error: %d", shadowStatus);
         return shadowStatus;
     }
+    tr_debug("Shadow \"string update rejected\" topic: %.*s", updateRejectedTopicLength, updateRejectedTopicBuffer);
 
     // Construct update topic
     shadowStatus = Shadow_GetTopicString(ShadowTopicStringTypeUpdate,
@@ -674,6 +679,7 @@ int AWSClient::updateShadowDocument(const char *updateDocument, size_t length)
         tr_error("Shadow_GetTopicString error: %d", shadowStatus);
         return shadowStatus;
     }
+    tr_debug("Shadow \"string update\" topic: %.*s", updateTopicLength, updateTopicBuffer);
 
     // Subscribe to update/accepted topic
     auto ret = subscribe(updateAcceptedTopicBuffer, updateAcceptedTopicLength);
