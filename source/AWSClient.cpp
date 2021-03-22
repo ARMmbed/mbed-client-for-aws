@@ -143,7 +143,12 @@ void AWSClient::eventCallbackStatic(MQTTContext_t *pMqttContext,
                     break;
 
                 default:
-                    tr_warn("Received unexpected shadow message");
+                    tr_warn(
+                        "Received unexpected shadow message type: %d, payload: %.*s",
+                        messageType,
+                        pPublishInfo->payloadLength,
+                        (const char *)pPublishInfo->pPayload
+                    );
                     break;
             }
         }
