@@ -46,6 +46,9 @@ using namespace mbed;
  */
 static int32_t Mbed_Send(NetworkContext_t *pNetworkContext, const void *pBuffer, size_t bytesToSend)
 {
+    MBED_ASSERT(pNetworkContext != nullptr);
+    MBED_ASSERT(pBuffer != nullptr);
+
     auto ret = pNetworkContext->socket.send(pBuffer, bytesToSend);
 
     return ret;
@@ -58,6 +61,9 @@ static int32_t Mbed_Send(NetworkContext_t *pNetworkContext, const void *pBuffer,
  */
 static int32_t Mbed_Recv(NetworkContext_t *pNetworkContext, void *pBuffer, size_t bytesToRecv)
 {
+    MBED_ASSERT(pNetworkContext != nullptr);
+    MBED_ASSERT(pBuffer != nullptr);
+
     auto ret = pNetworkContext->socket.recv(pBuffer, bytesToRecv);
 
     if (ret == NSAPI_ERROR_WOULD_BLOCK) {
@@ -83,10 +89,9 @@ void AWSClient::eventCallbackStatic(MQTTContext_t *pMqttContext,
                                     MQTTPacketInfo_t *pPacketInfo,
                                     MQTTDeserializedInfo_t *pDeserializedInfo)
 {
-    // TODO error handling
-
     MBED_ASSERT(pMqttContext != NULL);
     MBED_ASSERT(pPacketInfo != NULL);
+    MBED_ASSERT(pDeserializedInfo != NULL);
 
     auto &awsClient = AWSClient::getInstance();
 
