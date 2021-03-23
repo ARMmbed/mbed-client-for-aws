@@ -1,64 +1,49 @@
 {
     "name": "aws-client",
     "config": {
-        "log-puts": {
-            "help": "Sets an alternative to puts for logs output. Especially usefull to synchronize output with mbed-trace",
-            "macro_name": "IotLogging_Puts"
+        "aws-sdk-trace": {
+            "help": "Enable AWS SDK tracing",
+            "value": false
         },
-        "log-level-global": {
-            "help": "Set a default log level.",
-            "macro_name": "IOT_LOG_LEVEL_GLOBAL"
+        "socket-timeout": {
+            "help": "MQTT socket timeout",
+            "value": "5s"
         },
-        "log-level-platform": {
-            "help": "Set the log level for the platform.",
-            "macro_name": "IOT_LOG_LEVEL_PLATFORM"
+        "keepalive": {
+            "help": "MQTT keep-alive time",
+            "value": "60s"
         },
-        "log-level-network": {
-            "help": "Set the log level for the network.",
-            "macro_name": "IOT_LOG_LEVEL_NETWORK"
+        "port": {
+            "help": "MQTT port",
+            "value": 8883
         },
-        "log-level-taskpool": {
-            "help": "Set the log level for taskpool.",
-            "macro_name": "IOT_LOG_LEVEL_TASKPOOL"
+        "clean-session": {
+            "help": "MQTT clean session",
+            "value": true
         },
-        "aws-log-level-global": {
-            "help": "Set a default log level for aws.",
-            "macro_name": "AWS_IOT_LOG_LEVEL_GLOBAL"
-        },"aws-log-level-defender": {
-            "help": "Set the log level for defender.",
-            "macro_name": "AWS_IOT_LOG_LEVEL_DEFENDER"
+        "buffer-size": {
+            "help": "MQTT buffer size",
+            "value": 1024
         },
-        "aws-log-level-shadow": {
-            "help": "Set the log level for aws shadow.",
-            "macro_name": "AWS_IOT_LOG_LEVEL_SHADOW"
+        "shadow": {
+            "help": "Build the AWS IoT Device Shadow service support",
+            "value": false
         },
-        "aws-log-level-jobs": {
-            "help": "Set the log level for aws jobs.",
-            "macro_name": "AWS_IOT_LOG_LEVEL_JOBS"
+        "shadow-topic-max-size": {
+            "help": "Maximum length of the shadow topic",
+            "value": 256
         },
-        "enable-serializer-overrides": {
-            "help": "Set this to `1` to allow the MQTT packet serializer and deserializer functions to be overridden.",
-            "macro_name": "IOT_MQTT_ENABLE_SERIALIZE_OVERRIDES"
+        "shadow-get-response-max-size": {
+            "help": "Maximum length of the shadow get response",
+            "value": 1024
         },
-        "mqtt-enable_metrics": {
-            "help": "Set this to `1` to enable anonymous metrics reporting to AWS IoT.",
-            "macro_name": "AWS_IOT_MQTT_ENABLE_METRICS"
+        "json-query-max-size": {
+            "help": "Maximum length of a JSON query",
+            "value": 256
         },
-        "mqtt-response-wait-ms": {
-            "help": "A 'reasonable amount of time' to wait for keep-alive responses from the MQTT server.",
-            "macro_name": "IOT_MQTT_RESPONSE_WAIT_MS"
-        },
-        "mqtt-connections": {
-            "help": "When static memory only is 1, number of MQTT connections that may be opened, Defaults to 1 if undefined.",
-            "macro_name": "IOT_MQTT_CONNECTIONS"
-        },
-        "mqtt-max-in-progress-operations": {
-            "help": "When static memory only is 1, maximum number of MQTT operations that may be in-progress at any time. Defaults to 10 if undefined.",
-            "macro_name": "IOT_MQTT_MAX_IN_PROGRESS_OPERATIONS"
-        },
-        "mqtt-subscriptions": {
-            "help": "When static memory only is 1, maximum number of MQTT subscriptions at any time. Defaults to 8 if undefined.",
-            "macro_name": "IOT_MQTT_SUBSCRIPTIONS"
+        "shadow-update-document-max-size": {
+            "help": "Maximum length of a shadow update document",
+            "value": 1024
         }
     }
 }

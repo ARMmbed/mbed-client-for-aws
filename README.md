@@ -1,43 +1,35 @@
-# AWS IoT SDK port for Mbed OS
+# Mbed client for AWS IoT Core
 
-This library provides the port of the AWS IoT SDK for Mbed OS. It can be used to connect devices running Mbed OS to the AWS IoT Core service over MQTT.
+## Summary
 
-An example demonstrating the use of this library has been provided as part of the official Mbed OS examples [here](https://github.com/ARMmbed/mbed-os-example-for-aws.git).
+This is an Mbed client for AWS IoT Core, based on implementation contributed by Nantis GmbH ([Nantis-GmbH/mbed-aws-client](https://github.com/Nantis-GmbH/mbed-aws-client)). It depends on [coreMQTT](https://github.com/FreeRTOS/coreMQTT), [coreJSON](https://github.com/FreeRTOS/coreJSON) and [AWS IoT Device Shadow library](https://github.com/aws/Device-Shadow-for-AWS-IoT-embedded-sdk). It can be used to connect devices running Mbed OS to the Azure IoT Hub service, send and receive MQTT messages and work with [the Device Shadow service](https://docs.aws.amazon.com/iot/latest/developerguide/iot-device-shadows.html).
 
-## Summary:
+**Note:** This client is _not_ compatible with the old client prior to [5f422c9](https://github.com/ARMmbed/mbed-client-for-aws/commit/5f422c9449e5882855b84a26fb55fcc40edb5e6a). Existing users of the old client can continue to fetch that hash, but we strongly recommend migration to the new client.
 
-1. This library depends on:
-   1. AWS IoT device embedded-C SDK available [here](https://github.com/aws/aws-iot-device-sdk-embedded-C).
-   1. tinycbor library available [here](https://github.com/intel/tinycbor.git\#755f9ef932f9830a63a712fd2ac971d838b131f1).
-1. This SDK port follows the steps listed in AWS' developer guide found [here](https://docs.aws.amazon.com/freertos/latest/lib-ref/c-sdk/main/guide_developer.html).
-1. The "Config header" and the "Platform Types" requirements can be found in the library under [`mbed/include/`](./mbed/include)
-1. The "Platform layer" port can be found under [`mbed/src/`](./mbed/src) . As a minimum, a system clock, mutex, semaphore, network implementation and an optional thread implementation are required. More details on this are provided [here](https://docs.aws.amazon.com/freertos/latest/lib-ref/c-sdk/platform/index.html#platform). The thread implementation is optional and needed for synchronization between threads while using traces for debug messages.
+To use this library, an Mbed OS application needs to
 
-## Note on the IoT Defender service
+* connect to a network interface with Internet access
+* get the singleton instance of the client: `AWSClient::getInstance()`
+* call `init()`, `connect()` with required parameters including cloud credentials, message handler and network interface
+* call `processResponses()` periodically, e.g. using a thread
+* either: interact with an MQTT topic directly using `subscribe()`, `publish()`
+* or: use the Device Shadow API: `downloadShadowDocument()`, `getShadowDesiredValue()`, `publishShadowReportedValue()`
 
-For now, the [IoT Defender](https://docs.aws.amazon.com/iot/latest/developerguide/device-defender.html) service is disabled in this port library. If you need to enable it for your project:
+Configurations of this library are listed in [`mbed_lib.json`](./mbed_lib.json) and can be overriden by an application's `mbed_app.json`.
 
-* Open [.mbedignore](./.mbedignore) and change
+An example demonstrating the use of this library has been provided as part of the official Mbed OS examples [here](https://github.com/ARMmbed/mbed-os-example-for-aws).
 
-   ```diff
-   -aws-iot-device-sdk-embedded-c/libraries/aws/defender/*
-   +aws-iot-device-sdk-embedded-c/libraries/aws/defender/test/*
-   ```
-
-* Implement `IotClock_SleepMs`, `IotSemaphore_TryWait` and `IotMetrics_GetTcpConnections` in your application, as the Defender module depends on them. For their API requirements, search for them in the source code of [aws-iot-device-sdk-embedded-c](https://github.com/aws/aws-iot-device-sdk-embedded-C)
-
-## Related Links
-
-* [Mbed OS Stats API](https://os.mbed.com/docs/latest/apis/mbed-statistics.html).
+## Related links
+* [AWS IoT Core](https://aws.amazon.com/iot-core/)
+* [Mbed boards](https://os.mbed.com/platforms/)
 * [Mbed OS Configuration](https://os.mbed.com/docs/latest/reference/configuration.html).
 * [Mbed OS Serial Communication](https://os.mbed.com/docs/latest/tutorials/serial-communication.html).
-* [Mbed OS bare metal](https://os.mbed.com/docs/mbed-os/latest/reference/mbed-os-bare-metal.html).
-* [Mbed boards](https://os.mbed.com/platforms/).
-* [AWS IoT Core](https://aws.amazon.com/fr/iot-core/)
-* [AWS IoT Core - Embedded C SDK](https://github.com/aws/aws-iot-device-sdk-embedded-C/tree/v4_beta)
 
-### License and contributions
+## License and contributions
 
 The software is provided under Apache-2.0 license. Contributions to this project are accepted under the same license.
 
-This project contains code from other projects. The original license text is included in those source files. They must comply with our license guide.
+The following projects from Amazon (under MIT license) are externally fetched by the build tool:
+  * [coreMQTT](https://github.com/FreeRTOS/coreMQTT)
+  * [coreJSON](https://github.com/FreeRTOS/coreJSON)
+  * [AWS IoT Device Shadow library](https://github.com/aws/Device-Shadow-for-AWS-IoT-embedded-sdk)
