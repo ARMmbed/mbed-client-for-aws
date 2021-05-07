@@ -224,11 +224,14 @@ public:
     int publish(const char *topic, uint16_t topic_length, const void *payload, size_t payload_length, const MQTTQoS qos = MQTTQoS0);
 
     /**
-     * @brief Processes all of the pending incoming messages.
+     * @brief Processes pending incoming messages.
      *
      * Also handles keepalive.
      * This must be called periodically by the application.
      * Triggers application callback for received subscriptions.
+     * 
+     * @param once ProcessLoop called only once if true.
+     * If false, ProcessLoop is called until all messages are received.
      *
      * @return MBED_SUCCESS on success.
      */
@@ -359,8 +362,6 @@ private:
 #if MBED_CONF_AWS_CLIENT_SHADOW
 
     bool shadowGetAccepted;
-
-    bool shadowUpdateAccepted;
 
     /**
      * @brief Buffer for the shadow get response.

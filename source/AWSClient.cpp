@@ -131,21 +131,6 @@ void AWSClient::eventCallbackStatic(MQTTContext_t *pMqttContext,
                     snprintf(awsClient.shadowGetResponse, sizeof(awsClient.shadowGetResponse), "%.*s", pPublishInfo->payloadLength, (const char *)pPublishInfo->pPayload);
                     break;
 
-                case ShadowMessageTypeGetRejected:
-                    tr_warn("/get/rejected json payload: %.*s", pPublishInfo->payloadLength, (const char *)pPublishInfo->pPayload);
-                    awsClient.shadowGetAccepted = false;
-                    break;
-
-                case ShadowMessageTypeUpdateAccepted:
-                    tr_debug("/update/accepted json payload: %.*s", pPublishInfo->payloadLength, (const char *)pPublishInfo->pPayload);
-                    awsClient.shadowUpdateAccepted = true;
-                    break;
-
-                case ShadowMessageTypeUpdateRejected:
-                    tr_warn("/update/rejected json payload: %.*s", pPublishInfo->payloadLength, (const char *)pPublishInfo->pPayload);
-                    awsClient.shadowUpdateAccepted = false;
-                    break;
-
                 default:
                     tr_warn(
                         "Received unexpected shadow message type: %d, payload: %.*s",
@@ -575,8 +560,6 @@ int AWSClient::downloadShadowDocument()
 {
     static char getAcceptedTopicBuffer[MBED_CONF_AWS_CLIENT_SHADOW_TOPIC_MAX_SIZE] = {0};
     uint16_t getAcceptedTopicLength = 0;
-    static char getRejectedTopicBuffer[MBED_CONF_AWS_CLIENT_SHADOW_TOPIC_MAX_SIZE] = {0};
-    uint16_t getRejectedTopicLength = 0;
     static char getTopicBuffer[MBED_CONF_AWS_CLIENT_SHADOW_TOPIC_MAX_SIZE] = {0};
     uint16_t getTopicLength = 0;
 
@@ -595,19 +578,6 @@ int AWSClient::downloadShadowDocument()
         return shadowStatus;
     }
     tr_debug("Shadow \"get accepted\" topic: %.*s", getAcceptedTopicLength, getAcceptedTopicBuffer);
-
-    // Construct get/rejected topic
-    shadowStatus = Shadow_GetTopicString(ShadowTopicStringTypeGetRejected,
-                                         thingName,
-                                         strlen(thingName),
-                                         getRejectedTopicBuffer,
-                                         sizeof(getRejectedTopicBuffer),
-                                         &getRejectedTopicLength);
-    if (shadowStatus != SHADOW_SUCCESS) {
-        tr_error("Shadow_GetTopicString error: %d", shadowStatus);
-        return shadowStatus;
-    }
-    tr_debug("Shadow \"get rejected\" topic: %.*s", getRejectedTopicLength, getRejectedTopicBuffer);
 
     // Construct get topic
     shadowStatus = Shadow_GetTopicString(ShadowTopicStringTypeGet,
@@ -629,14 +599,7 @@ int AWSClient::downloadShadowDocument()
         return ret;
     }
 
-    // Subscribe to get/rejected topic
-    ret = subscribe(getRejectedTopicBuffer, getRejectedTopicLength);
-    if (ret != 0) {
-        tr_error("subscribe error: %d", ret);
-        goto unsubscribeAndReturn;
-    }
-
-    // Publish to update topic
+    // Publish to get topic
     ret = publish(getTopicBuffer, getTopicLength, nullptr, 0);
     if (ret != 0) {
         tr_error("publish error: %d", ret);
@@ -644,9 +607,7 @@ int AWSClient::downloadShadowDocument()
     }
 
     // Wait for server response
-    mutex.lock();
-    ret = MQTT_ProcessLoop(&mqttContext, 0);
-    mutex.unlock();
+    ret = processResponses();
     if (ret != MQTTSuccess) {
         tr_error("MQTT_ProcessLoop error: %d", ret);
         goto unsubscribeAndReturn;
@@ -662,7 +623,6 @@ unsubscribeAndReturn:
 
     // Unsubscribe from topics
     unsubscribe(getAcceptedTopicBuffer, getAcceptedTopicLength);
-    unsubscribe(getRejectedTopicBuffer, getRejectedTopicLength);
 
     // Return result
     return ret;
@@ -670,96 +630,28 @@ unsubscribeAndReturn:
 
 int AWSClient::updateShadowDocument(const char *updateDocument, size_t length)
 {
-    static char updateAcceptedTopicBuffer[MBED_CONF_AWS_CLIENT_SHADOW_TOPIC_MAX_SIZE] = {0};
-    uint16_t updateAcceptedTopicLength = 0;
-    static char updateRejectedTopicBuffer[MBED_CONF_AWS_CLIENT_SHADOW_TOPIC_MAX_SIZE] = {0};
-    uint16_t updateRejectedTopicLength = 0;
     static char updateTopicBuffer[MBED_CONF_AWS_CLIENT_SHADOW_TOPIC_MAX_SIZE] = {0};
     uint16_t updateTopicLength = 0;
 
-    // Reset update accepted flag
-    shadowUpdateAccepted = false;
-
-    // Construct update/accepted topic
-    auto shadowStatus = Shadow_GetTopicString(ShadowTopicStringTypeUpdateAccepted,
+    // Construct update topic
+    auto shadowStatus = Shadow_GetTopicString(ShadowTopicStringTypeUpdate,
                                               thingName,
                                               strlen(thingName),
-                                              updateAcceptedTopicBuffer,
-                                              sizeof(updateAcceptedTopicBuffer),
-                                              &updateAcceptedTopicLength);
-    if (shadowStatus != SHADOW_SUCCESS) {
-        tr_error("Shadow_GetTopicString error: %d", shadowStatus);
-        return shadowStatus;
-    }
-    tr_debug("Shadow \"update accepted\" topic: %.*s", updateAcceptedTopicLength, updateAcceptedTopicBuffer);
-
-    // Construct update/rejected topic
-    shadowStatus = Shadow_GetTopicString(ShadowTopicStringTypeUpdateRejected,
-                                         thingName,
-                                         strlen(thingName),
-                                         updateRejectedTopicBuffer,
-                                         sizeof(updateRejectedTopicBuffer),
-                                         &updateRejectedTopicLength);
-    if (shadowStatus != SHADOW_SUCCESS) {
-        tr_error("Shadow_GetTopicString error: %d", shadowStatus);
-        return shadowStatus;
-    }
-    tr_debug("Shadow \"string update rejected\" topic: %.*s", updateRejectedTopicLength, updateRejectedTopicBuffer);
-
-    // Construct update topic
-    shadowStatus = Shadow_GetTopicString(ShadowTopicStringTypeUpdate,
-                                         thingName,
-                                         strlen(thingName),
-                                         updateTopicBuffer,
-                                         sizeof(updateTopicBuffer),
-                                         &updateTopicLength);
+                                              updateTopicBuffer,
+                                              sizeof(updateTopicBuffer),
+                                              &updateTopicLength);
     if (shadowStatus != SHADOW_SUCCESS) {
         tr_error("Shadow_GetTopicString error: %d", shadowStatus);
         return shadowStatus;
     }
     tr_debug("Shadow \"string update\" topic: %.*s", updateTopicLength, updateTopicBuffer);
 
-    // Subscribe to update/accepted topic
-    auto ret = subscribe(updateAcceptedTopicBuffer, updateAcceptedTopicLength);
-    if (ret != 0) {
-        tr_error("subscribe error: %d", ret);
-        return ret;
-    }
-
-    // Subscribe to update/rejected topic
-    ret = subscribe(updateRejectedTopicBuffer, updateRejectedTopicLength);
-    if (ret != 0) {
-        tr_error("subscribe error: %d", ret);
-        goto unsubscribeAndReturn;
-    }
-
     // Publish to update topic
-    ret = publish(updateTopicBuffer, updateTopicLength, updateDocument, length);
+    auto ret = publish(updateTopicBuffer, updateTopicLength, updateDocument, length);
     if (ret != 0) {
         tr_error("publish error: %d", ret);
-        goto unsubscribeAndReturn;
+        return ret;
     }
-
-    // Wait for server response
-    mutex.lock();
-    ret = MQTT_ProcessLoop(&mqttContext, 0);
-    mutex.unlock();
-    if (ret != MQTTSuccess) {
-        tr_error("MQTT_ProcessLoop error: %d", ret);
-        goto unsubscribeAndReturn;
-    }
-
-    // Check response
-    if (!shadowUpdateAccepted) {
-        tr_error("Shadow update request rejected.");
-        ret = -1;
-    }
-
-unsubscribeAndReturn:
-
-    // Unsubscribe from topics
-    unsubscribe(updateAcceptedTopicBuffer, updateAcceptedTopicLength);
-    unsubscribe(updateRejectedTopicBuffer, updateRejectedTopicLength);
 
     // Return result
     return ret;
