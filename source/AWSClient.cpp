@@ -26,6 +26,7 @@
 #include "AWSClient.h"
 #include "mbed_trace.h"
 #include "mbed_error.h"
+#include "rtos/Semaphore.h"
 
 extern "C"
 {
@@ -38,6 +39,9 @@ extern "C"
 
 using namespace std;
 using namespace mbed;
+
+#define MQTT_ACK_TIMEOUT (5s)
+static rtos::Semaphore pubackSemaphore(1);
 
 /**
  * @brief Network send port function.
@@ -156,16 +160,15 @@ void AWSClient::eventCallbackStatic(MQTTContext_t *pMqttContext,
         else
 #endif // MBED_CONF_AWS_CLIENT_SHADOW
         {
-            awsClient.subCallback(pPublishInfo->pTopicName,
-                                  pPublishInfo->topicNameLength,
-                                  pPublishInfo->pPayload,
-                                  pPublishInfo->payloadLength);
+            awsClient.subCallback(pPublishInfo);
         }
     } else {
         /* Handle other packets. */
         switch (pPacketInfo->type) {
             case MQTT_PACKET_TYPE_PUBACK:
-                tr_debug("PUBACK");
+                tr_debug("PUBACK received for packet id %u",
+                         pDeserializedInfo->packetIdentifier);
+                pubackSemaphore.release();
                 break;
 
             case MQTT_PACKET_TYPE_PUBCOMP:
@@ -173,7 +176,7 @@ void AWSClient::eventCallbackStatic(MQTTContext_t *pMqttContext,
                 break;
 
             case MQTT_PACKET_TYPE_SUBACK:
-                tr_debug("PUBACK");
+                tr_debug("SUBACK");
                 break;
 
             case MQTT_PACKET_TYPE_UNSUBACK:
@@ -200,7 +203,7 @@ void AWSClient::eventCallbackStatic(MQTTContext_t *pMqttContext,
     }
 }
 
-int AWSClient::init(Callback<void(const char *, uint16_t, const void *, size_t)> subCallback,
+int AWSClient::init(Callback<void(MQTTPublishInfo_t *)> subCallback,
                     const TLSCredentials_t &creds)
 {
     // Set subscription callback
@@ -377,16 +380,20 @@ int AWSClient::subscribe(const char *topicFilter, uint16_t topicFilterLength, co
     subscribeList[0].pTopicFilter = topicFilter;
     subscribeList[0].topicFilterLength = topicFilterLength;
 
+    mutex.lock();
     auto packetId = MQTT_GetPacketId(&mqttContext);
 
     auto status = MQTT_Subscribe(&mqttContext, subscribeList, 1, packetId);
+    mutex.unlock();
     if (status != MQTTSuccess) {
         tr_error("MQTT subscribe error: %d", status);
         return status;
     }
 
     // Call process loop once to receive the ACK
+    mutex.lock();
     status = MQTT_ProcessLoop(&mqttContext, 0);
+    mutex.unlock();
     if (status != MQTTSuccess) {
         tr_error("MQTT ProcessLoop error: %d", status);
         return status;
@@ -395,23 +402,28 @@ int AWSClient::subscribe(const char *topicFilter, uint16_t topicFilterLength, co
     return status;
 }
 
-int AWSClient::unsubscribe(const char *topicFilter, uint16_t topicFilterLength)
+int AWSClient::unsubscribe(const char *topicFilter, uint16_t topicFilterLength, const MQTTQoS qos)
 {
     // Currently only support single subscriptions
     MQTTSubscribeInfo_t unsubscribeList[1];
+    unsubscribeList[0].qos = qos;
     unsubscribeList[0].pTopicFilter = topicFilter;
     unsubscribeList[0].topicFilterLength = topicFilterLength;
 
+    mutex.lock();
     auto packetId = MQTT_GetPacketId(&mqttContext);
 
     auto status = MQTT_Unsubscribe(&mqttContext, unsubscribeList, 1, packetId);
+    mutex.unlock();
     if (status != MQTTSuccess) {
         tr_error("MQTT subscribe error: %d", status);
         return status;
     }
 
     // Call process loop once to receive the ACK
+    mutex.lock();
     status = MQTT_ProcessLoop(&mqttContext, 0);
+    mutex.unlock();
     if (status != MQTTSuccess) {
         tr_error("MQTT ProcessLoop error: %d", status);
         return status;
@@ -432,20 +444,29 @@ int AWSClient::publish(const char *topic, uint16_t topic_length, const void *pay
     // TODO check for length limit
 
     // Packet ID is needed for QoS > 0.
+    mutex.lock();
     auto packetId = MQTT_GetPacketId(&mqttContext);
 
     auto status = MQTT_Publish(&mqttContext, &publishInfo, packetId);
+    mutex.unlock();
     if (status != MQTTSuccess) {
         tr_error("MQTT publish error: %d", status);
         return status;
     }
 
-    // TODO process response in case of QoS
+    if (qos == MQTTQoS1)
+    {
+        if (!pubackSemaphore.try_acquire_for(MQTT_ACK_TIMEOUT))
+        {
+            LogError(("Failed to receive ack for publish."));
+            status = (MQTTStatus_t)-1;
+        }
+    }
 
     return status;
 }
 
-int AWSClient::processResponses()
+int AWSClient::processResponses(bool once)
 {
     if (mqttContext.connectStatus == MQTTNotConnected) {
         tr_error("MQTT not connected");
@@ -460,11 +481,16 @@ int AWSClient::processResponses()
 
         // ProcessLoop is called with a timeout of 0,
         // which means that it will only wait for the socket timeout once.
+        mutex.lock();
         auto status = MQTT_ProcessLoop(&mqttContext, 0);
+        mutex.unlock();
         if (status != MQTTSuccess) {
             tr_error("MQTT ProcessLoop error: %d", status);
             return status;
         }
+
+        if (once)
+            break;
 
     } while (isResponseReceived);
 
@@ -489,7 +515,7 @@ int AWSClient::getShadowDesiredValue(const char *key, size_t key_length, char **
                            query, strlen(query),
                            value, value_length);
     if (ret == JSONNotFound) {
-        tr_error("JSON key %s not found", key);
+        tr_info("JSON key %s not found", key);
         return ret;
     } else if (ret != JSONSuccess) {
         tr_error("JSON_Search error: %d", ret);
@@ -618,7 +644,9 @@ int AWSClient::downloadShadowDocument()
     }
 
     // Wait for server response
+    mutex.lock();
     ret = MQTT_ProcessLoop(&mqttContext, 0);
+    mutex.unlock();
     if (ret != MQTTSuccess) {
         tr_error("MQTT_ProcessLoop error: %d", ret);
         goto unsubscribeAndReturn;
@@ -713,7 +741,9 @@ int AWSClient::updateShadowDocument(const char *updateDocument, size_t length)
     }
 
     // Wait for server response
+    mutex.lock();
     ret = MQTT_ProcessLoop(&mqttContext, 0);
+    mutex.unlock();
     if (ret != MQTTSuccess) {
         tr_error("MQTT_ProcessLoop error: %d", ret);
         goto unsubscribeAndReturn;

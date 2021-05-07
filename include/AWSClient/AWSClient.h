@@ -28,6 +28,7 @@
 
 #include "netsocket/TLSSocket.h"
 #include "platform/Callback.h"
+#include "rtos/Mutex.h"
 
 extern "C"
 {
@@ -132,7 +133,7 @@ public:
      * @param creds Credentials containing the root CA.
      * @return MBED_SUCCESS on success.
      */
-    int init(mbed::Callback<void(const char *, uint16_t, const void *, size_t)> subCallback,
+    int init(mbed::Callback<void(MQTTPublishInfo_t *)> subCallback,
              const TLSCredentials_t &creds);
 
     /**
@@ -205,9 +206,10 @@ public:
      *
      * @param topicFilter Topic filter.
      * @param topicFilterLength Length of the topic filter.
+     * @param qos QoS.
      * @return MBED_SUCCESS on success.
      */
-    int unsubscribe(const char *topicFilter, uint16_t topicFilterLength);
+    int unsubscribe(const char *topicFilter, uint16_t topicFilterLength, const MQTTQoS qos = MQTTQoS0);
 
     /**
      * @brief Publishes to a topic.
@@ -230,7 +232,7 @@ public:
      *
      * @return MBED_SUCCESS on success.
      */
-    int processResponses();
+    int processResponses(bool once = false);
 
 #if MBED_CONF_AWS_CLIENT_SHADOW
 
@@ -306,6 +308,11 @@ private:
     MQTTContext_t mqttContext;
 
     /**
+     * @brief Mutex for thread safety.
+     */
+    rtos::Mutex mutex;
+
+    /**
      * @brief Network context provided to the SDK.
      */
     NetworkContext_t networkContext;
@@ -330,7 +337,7 @@ private:
     /**
      * @brief Application callback for subscription events.
      */
-    mbed::Callback<void(const char *, uint16_t, const void *, size_t)> subCallback;
+    mbed::Callback<void(MQTTPublishInfo_t *)> subCallback;
 
     /**
      * @brief Static callback to provide to the SDK.
