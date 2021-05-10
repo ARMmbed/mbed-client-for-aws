@@ -217,9 +217,18 @@ public:
      * @param topicFilter Topic filter.
      * @param topicFilterLength Length of the topic filter.
      * @param qos QoS.
+     * @param callbackTopicFilter Topic to match on callbacks (required for jobs).
+     * @param callbackTopicFilterLength Length of the topic to match on callbacks (required for jobs).
      * @return MBED_SUCCESS on success.
      */
-    int unsubscribe(const char *topicFilter, uint16_t topicFilterLength, const MQTTQoS qos = MQTTQoS0);
+    int unsubscribe(const char *topicFilter, uint16_t topicFilterLength, const MQTTQoS qos,
+                    const char *callbackTopicFilter, uint16_t callbackTopicFilterLength);
+
+    inline int unsubscribe(const char *topicFilter, uint16_t topicFilterLength, const MQTTQoS qos = MQTTQoS0)
+    {
+        return unsubscribe(topicFilter, topicFilterLength,
+                           qos, topicFilter, topicFilterLength);
+    }
 
     /**
      * @brief Publishes to a topic.

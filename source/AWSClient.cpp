@@ -360,7 +360,8 @@ int AWSClient::subscribe(const char *topicFilter, uint16_t topicFilterLength,
     return status;
 }
 
-int AWSClient::unsubscribe(const char *topicFilter, uint16_t topicFilterLength, const MQTTQoS qos)
+int AWSClient::unsubscribe(const char *topicFilter, uint16_t topicFilterLength, const MQTTQoS qos,
+                           const char *callbackTopicFilter, uint16_t callbackTopicFilterLength)
 {
     // Currently only support single subscriptions
     MQTTSubscribeInfo_t unsubscribeList[1];
@@ -369,7 +370,7 @@ int AWSClient::unsubscribe(const char *topicFilter, uint16_t topicFilterLength, 
     unsubscribeList[0].topicFilterLength = topicFilterLength;
 
     mutex.lock();
-    SubscriptionManager_RemoveCallback(topicFilter, topicFilterLength);
+    SubscriptionManager_RemoveCallback(callbackTopicFilter, callbackTopicFilterLength);
 
     auto packetId = MQTT_GetPacketId(&mqttContext);
 
