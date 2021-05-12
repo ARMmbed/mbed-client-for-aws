@@ -28,11 +28,13 @@
 
 #include "netsocket/TLSSocket.h"
 #include "platform/Callback.h"
+#include "rtos/Mutex.h"
 
 extern "C"
 {
 #include "core_mqtt.h"
 #include "core_json.h" // Expose return value enumeration
+#include "mqtt_subscription_manager.h"
 }
 
 // Undef trace group from AWS SDK logging
@@ -128,12 +130,10 @@ public:
      * Initializes the SDK.
      * Parses the root CAs and stores them.
      *
-     * @param subCallback Subscription callback (topic, topic length, payload, payload length).
      * @param creds Credentials containing the root CA.
      * @return MBED_SUCCESS on success.
      */
-    int init(mbed::Callback<void(const char *, uint16_t, const void *, size_t)> subCallback,
-             const TLSCredentials_t &creds);
+    int init(const TLSCredentials_t &creds);
 
     /**
      * @brief Establish the MQTT connection.
@@ -191,23 +191,44 @@ public:
     /**
      * @brief Subscribes to a topic filter.
      *
-     * TODO char array variant would be more efficient in some cases
-     *
      * @param topicFilter Topic filter.
      * @param topicFilterLength Length of the topic filter.
      * @param qos QoS.
+     * @param subCallback Subscription callback.
+     * @param callbackTopicFilter Topic to match on callbacks (required for jobs).
+     * @param callbackTopicFilterLength Length of the topic to match on callbacks (required for jobs).
      * @return MBED_SUCCESS on success.
      */
-    int subscribe(const char *topicFilter, uint16_t topicFilterLength, const MQTTQoS qos = MQTTQoS0);
+    int subscribe(const char *topicFilter, uint16_t topicFilterLength, 
+                  const MQTTQoS qos, SubscriptionManagerCallback_t subCallback,
+                  const char *callbackTopicFilter, uint16_t callbackTopicFilterLength);
+
+    inline int subscribe(const char *topicFilter, uint16_t topicFilterLength, 
+                         const MQTTQoS qos, SubscriptionManagerCallback_t subCallback)
+    {
+        return subscribe(topicFilter, topicFilterLength, 
+                  qos, subCallback, 
+                  topicFilter, topicFilterLength);
+    }
 
     /**
      * @brief Unsubscribes from a topic filter.
      *
      * @param topicFilter Topic filter.
      * @param topicFilterLength Length of the topic filter.
+     * @param qos QoS.
+     * @param callbackTopicFilter Topic to match on callbacks (required for jobs).
+     * @param callbackTopicFilterLength Length of the topic to match on callbacks (required for jobs).
      * @return MBED_SUCCESS on success.
      */
-    int unsubscribe(const char *topicFilter, uint16_t topicFilterLength);
+    int unsubscribe(const char *topicFilter, uint16_t topicFilterLength, const MQTTQoS qos,
+                    const char *callbackTopicFilter, uint16_t callbackTopicFilterLength);
+
+    inline int unsubscribe(const char *topicFilter, uint16_t topicFilterLength, const MQTTQoS qos = MQTTQoS0)
+    {
+        return unsubscribe(topicFilter, topicFilterLength,
+                           qos, topicFilter, topicFilterLength);
+    }
 
     /**
      * @brief Publishes to a topic.
@@ -222,15 +243,18 @@ public:
     int publish(const char *topic, uint16_t topic_length, const void *payload, size_t payload_length, const MQTTQoS qos = MQTTQoS0);
 
     /**
-     * @brief Processes all of the pending incoming messages.
+     * @brief Processes pending incoming messages.
      *
      * Also handles keepalive.
      * This must be called periodically by the application.
      * Triggers application callback for received subscriptions.
+     * 
+     * @param once ProcessLoop called only once if true.
+     * If false, ProcessLoop is called until all messages are received.
      *
      * @return MBED_SUCCESS on success.
      */
-    int processResponses();
+    int processResponses(bool once = false);
 
 #if MBED_CONF_AWS_CLIENT_SHADOW
 
@@ -306,6 +330,11 @@ private:
     MQTTContext_t mqttContext;
 
     /**
+     * @brief Mutex for thread safety.
+     */
+    rtos::Mutex mutex;
+
+    /**
      * @brief Network context provided to the SDK.
      */
     NetworkContext_t networkContext;
@@ -328,11 +357,6 @@ private:
     bool isResponseReceived;
 
     /**
-     * @brief Application callback for subscription events.
-     */
-    mbed::Callback<void(const char *, uint16_t, const void *, size_t)> subCallback;
-
-    /**
      * @brief Static callback to provide to the SDK.
      * Calls the application callback when a response is received
      * for one of our subscriptions.
@@ -353,8 +377,6 @@ private:
 
     bool shadowGetAccepted;
 
-    bool shadowUpdateAccepted;
-
     /**
      * @brief Buffer for the shadow get response.
      *
@@ -362,6 +384,13 @@ private:
      *
      */
     char shadowGetResponse[MBED_CONF_AWS_CLIENT_SHADOW_GET_RESPONSE_MAX_SIZE];
+
+    /**
+     * @brief Subscription callback for shadow subscriptions.
+     * 
+     * @param pPublishInfo Publish info from event callback.
+     */
+    static void shadowSubscriptionCallback(MQTTPublishInfo_t *pPublishInfo);
 
 #endif // MBED_CONF_AWS_CLIENT_SHADOW
 };

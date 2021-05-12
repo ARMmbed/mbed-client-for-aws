@@ -26,6 +26,7 @@
 #include "AWSClient.h"
 #include "mbed_trace.h"
 #include "mbed_error.h"
+#include "rtos/Semaphore.h"
 
 extern "C"
 {
@@ -38,6 +39,9 @@ extern "C"
 
 using namespace std;
 using namespace mbed;
+
+#define MQTT_ACK_TIMEOUT (5s)
+static rtos::Semaphore pubackSemaphore(1);
 
 /**
  * @brief Network send port function.
@@ -102,70 +106,20 @@ void AWSClient::eventCallbackStatic(MQTTContext_t *pMqttContext,
     /* Handle incoming publish. The lower 4 bits of the publish packet
      * type is used for the dup, QoS, and retain flags. Hence masking
      * out the lower bits to check if the packet is publish. */
-    if ((pPacketInfo->type & 0xF0U) == MQTT_PACKET_TYPE_PUBLISH) {
+    if ((pPacketInfo->type & 0xF0U) == MQTT_PACKET_TYPE_PUBLISH)
+    {
         MBED_ASSERT(pDeserializedInfo->pPublishInfo != NULL);
-        MQTTPublishInfo_t *pPublishInfo = pDeserializedInfo->pPublishInfo;
-
-#if MBED_CONF_AWS_CLIENT_SHADOW
-        /* Let the Device Shadow library tell us whether this is a device shadow message. */
-        ShadowMessageType_t messageType = ShadowMessageTypeMaxNum;
-        const char *pThingName = NULL;
-        uint16_t thingNameLength = 0U;
-
-        if (SHADOW_SUCCESS == Shadow_MatchTopic(pPublishInfo->pTopicName,
-                                                pPublishInfo->topicNameLength,
-                                                &messageType,
-                                                &pThingName,
-                                                &thingNameLength)) {
-            switch (messageType) {
-                case ShadowMessageTypeGetAccepted:
-                    tr_debug("/get/accepted json payload: %.*s", pPublishInfo->payloadLength, (const char *)pPublishInfo->pPayload);
-                    awsClient.shadowGetAccepted = true;
-                    // Buffer should be large enough to contain the response.
-                    MBED_ASSERT(pPublishInfo->payloadLength < sizeof(awsClient.shadowGetResponse));
-                    // Safely store the get response, truncate if necessary.
-                    snprintf(awsClient.shadowGetResponse, sizeof(awsClient.shadowGetResponse), "%.*s", pPublishInfo->payloadLength, (const char *)pPublishInfo->pPayload);
-                    break;
-
-                case ShadowMessageTypeGetRejected:
-                    tr_warn("/get/rejected json payload: %.*s", pPublishInfo->payloadLength, (const char *)pPublishInfo->pPayload);
-                    awsClient.shadowGetAccepted = false;
-                    break;
-
-                case ShadowMessageTypeUpdateAccepted:
-                    tr_debug("/update/accepted json payload: %.*s", pPublishInfo->payloadLength, (const char *)pPublishInfo->pPayload);
-                    awsClient.shadowUpdateAccepted = true;
-                    break;
-
-                case ShadowMessageTypeUpdateRejected:
-                    tr_warn("/update/rejected json payload: %.*s", pPublishInfo->payloadLength, (const char *)pPublishInfo->pPayload);
-                    awsClient.shadowUpdateAccepted = false;
-                    break;
-
-                default:
-                    tr_warn(
-                        "Received unexpected shadow message type: %d, payload: %.*s",
-                        messageType,
-                        pPublishInfo->payloadLength,
-                        (const char *)pPublishInfo->pPayload
-                    );
-                    break;
-            }
-        }
-        // Not a shadow topic, forward to the callback
-        else
-#endif // MBED_CONF_AWS_CLIENT_SHADOW
-        {
-            awsClient.subCallback(pPublishInfo->pTopicName,
-                                  pPublishInfo->topicNameLength,
-                                  pPublishInfo->pPayload,
-                                  pPublishInfo->payloadLength);
-        }
-    } else {
+        // Forward to subscription manager
+        SubscriptionManager_DispatchHandler(pDeserializedInfo->pPublishInfo);
+    }
+    else
+    {
         /* Handle other packets. */
         switch (pPacketInfo->type) {
             case MQTT_PACKET_TYPE_PUBACK:
-                tr_debug("PUBACK");
+                tr_debug("PUBACK received for packet id %u",
+                         pDeserializedInfo->packetIdentifier);
+                pubackSemaphore.release();
                 break;
 
             case MQTT_PACKET_TYPE_PUBCOMP:
@@ -173,7 +127,7 @@ void AWSClient::eventCallbackStatic(MQTTContext_t *pMqttContext,
                 break;
 
             case MQTT_PACKET_TYPE_SUBACK:
-                tr_debug("PUBACK");
+                tr_debug("SUBACK");
                 break;
 
             case MQTT_PACKET_TYPE_UNSUBACK:
@@ -200,12 +154,8 @@ void AWSClient::eventCallbackStatic(MQTTContext_t *pMqttContext,
     }
 }
 
-int AWSClient::init(Callback<void(const char *, uint16_t, const void *, size_t)> subCallback,
-                    const TLSCredentials_t &creds)
+int AWSClient::init(const TLSCredentials_t &creds)
 {
-    // Set subscription callback
-    this->subCallback = subCallback;
-
     // Fill in TransportInterface send and receive function pointers
     TransportInterface_t transport;
     transport.pNetworkContext = &networkContext;
@@ -369,7 +319,9 @@ const char *AWSClient::getThingName()
     return thingName;
 }
 
-int AWSClient::subscribe(const char *topicFilter, uint16_t topicFilterLength, const MQTTQoS qos)
+int AWSClient::subscribe(const char *topicFilter, uint16_t topicFilterLength, 
+                         const MQTTQoS qos, SubscriptionManagerCallback_t subCallback,
+                         const char *callbackTopicFilter, uint16_t callbackTopicFilterLength)
 {
     // Currently only support single subscriptions
     MQTTSubscribeInfo_t subscribeList[1];
@@ -377,41 +329,62 @@ int AWSClient::subscribe(const char *topicFilter, uint16_t topicFilterLength, co
     subscribeList[0].pTopicFilter = topicFilter;
     subscribeList[0].topicFilterLength = topicFilterLength;
 
+    mutex.lock();
     auto packetId = MQTT_GetPacketId(&mqttContext);
 
     auto status = MQTT_Subscribe(&mqttContext, subscribeList, 1, packetId);
+    mutex.unlock();
     if (status != MQTTSuccess) {
         tr_error("MQTT subscribe error: %d", status);
         return status;
     }
 
     // Call process loop once to receive the ACK
+    mutex.lock();
     status = MQTT_ProcessLoop(&mqttContext, 0);
+    mutex.unlock();
     if (status != MQTTSuccess) {
         tr_error("MQTT ProcessLoop error: %d", status);
         return status;
     }
 
+    mutex.lock();
+    auto subscriptionStatus = SubscriptionManager_RegisterCallback(callbackTopicFilter, callbackTopicFilterLength, subCallback);
+    mutex.unlock();
+    if (subscriptionStatus == SUBSCRIPTION_MANAGER_REGISTRY_FULL)
+    {
+        tr_error("Failed to register a callback to subscription manager with error = %d.", subscriptionStatus);
+        return subscriptionStatus;
+    }
+
     return status;
 }
 
-int AWSClient::unsubscribe(const char *topicFilter, uint16_t topicFilterLength)
+int AWSClient::unsubscribe(const char *topicFilter, uint16_t topicFilterLength, const MQTTQoS qos,
+                           const char *callbackTopicFilter, uint16_t callbackTopicFilterLength)
 {
     // Currently only support single subscriptions
     MQTTSubscribeInfo_t unsubscribeList[1];
+    unsubscribeList[0].qos = qos;
     unsubscribeList[0].pTopicFilter = topicFilter;
     unsubscribeList[0].topicFilterLength = topicFilterLength;
+
+    mutex.lock();
+    SubscriptionManager_RemoveCallback(callbackTopicFilter, callbackTopicFilterLength);
 
     auto packetId = MQTT_GetPacketId(&mqttContext);
 
     auto status = MQTT_Unsubscribe(&mqttContext, unsubscribeList, 1, packetId);
+    mutex.unlock();
     if (status != MQTTSuccess) {
         tr_error("MQTT subscribe error: %d", status);
         return status;
     }
 
     // Call process loop once to receive the ACK
+    mutex.lock();
     status = MQTT_ProcessLoop(&mqttContext, 0);
+    mutex.unlock();
     if (status != MQTTSuccess) {
         tr_error("MQTT ProcessLoop error: %d", status);
         return status;
@@ -432,20 +405,29 @@ int AWSClient::publish(const char *topic, uint16_t topic_length, const void *pay
     // TODO check for length limit
 
     // Packet ID is needed for QoS > 0.
+    mutex.lock();
     auto packetId = MQTT_GetPacketId(&mqttContext);
 
     auto status = MQTT_Publish(&mqttContext, &publishInfo, packetId);
+    mutex.unlock();
     if (status != MQTTSuccess) {
         tr_error("MQTT publish error: %d", status);
         return status;
     }
 
-    // TODO process response in case of QoS
+    if (qos == MQTTQoS1)
+    {
+        if (!pubackSemaphore.try_acquire_for(MQTT_ACK_TIMEOUT))
+        {
+            LogError(("Failed to receive ack for publish."));
+            status = (MQTTStatus_t)-1;
+        }
+    }
 
     return status;
 }
 
-int AWSClient::processResponses()
+int AWSClient::processResponses(bool once)
 {
     if (mqttContext.connectStatus == MQTTNotConnected) {
         tr_error("MQTT not connected");
@@ -460,11 +442,16 @@ int AWSClient::processResponses()
 
         // ProcessLoop is called with a timeout of 0,
         // which means that it will only wait for the socket timeout once.
+        mutex.lock();
         auto status = MQTT_ProcessLoop(&mqttContext, 0);
+        mutex.unlock();
         if (status != MQTTSuccess) {
             tr_error("MQTT ProcessLoop error: %d", status);
             return status;
         }
+
+        if (once)
+            break;
 
     } while (isResponseReceived);
 
@@ -489,7 +476,7 @@ int AWSClient::getShadowDesiredValue(const char *key, size_t key_length, char **
                            query, strlen(query),
                            value, value_length);
     if (ret == JSONNotFound) {
-        tr_error("JSON key %s not found", key);
+        tr_info("JSON key %s not found", key);
         return ret;
     } else if (ret != JSONSuccess) {
         tr_error("JSON_Search error: %d", ret);
@@ -549,8 +536,6 @@ int AWSClient::downloadShadowDocument()
 {
     static char getAcceptedTopicBuffer[MBED_CONF_AWS_CLIENT_SHADOW_TOPIC_MAX_SIZE] = {0};
     uint16_t getAcceptedTopicLength = 0;
-    static char getRejectedTopicBuffer[MBED_CONF_AWS_CLIENT_SHADOW_TOPIC_MAX_SIZE] = {0};
-    uint16_t getRejectedTopicLength = 0;
     static char getTopicBuffer[MBED_CONF_AWS_CLIENT_SHADOW_TOPIC_MAX_SIZE] = {0};
     uint16_t getTopicLength = 0;
 
@@ -570,19 +555,6 @@ int AWSClient::downloadShadowDocument()
     }
     tr_debug("Shadow \"get accepted\" topic: %.*s", getAcceptedTopicLength, getAcceptedTopicBuffer);
 
-    // Construct get/rejected topic
-    shadowStatus = Shadow_GetTopicString(ShadowTopicStringTypeGetRejected,
-                                         thingName,
-                                         strlen(thingName),
-                                         getRejectedTopicBuffer,
-                                         sizeof(getRejectedTopicBuffer),
-                                         &getRejectedTopicLength);
-    if (shadowStatus != SHADOW_SUCCESS) {
-        tr_error("Shadow_GetTopicString error: %d", shadowStatus);
-        return shadowStatus;
-    }
-    tr_debug("Shadow \"get rejected\" topic: %.*s", getRejectedTopicLength, getRejectedTopicBuffer);
-
     // Construct get topic
     shadowStatus = Shadow_GetTopicString(ShadowTopicStringTypeGet,
                                          thingName,
@@ -597,20 +569,13 @@ int AWSClient::downloadShadowDocument()
     tr_debug("Shadow \"get\" topic: %.*s", getTopicLength, getTopicBuffer);
 
     // Subscribe to get/accepted topic
-    auto ret = subscribe(getAcceptedTopicBuffer, getAcceptedTopicLength);
+    auto ret = subscribe(getAcceptedTopicBuffer, getAcceptedTopicLength, MQTTQoS0, AWSClient::shadowSubscriptionCallback);
     if (ret != 0) {
         tr_error("subscribe error: %d", ret);
         return ret;
     }
 
-    // Subscribe to get/rejected topic
-    ret = subscribe(getRejectedTopicBuffer, getRejectedTopicLength);
-    if (ret != 0) {
-        tr_error("subscribe error: %d", ret);
-        goto unsubscribeAndReturn;
-    }
-
-    // Publish to update topic
+    // Publish to get topic
     ret = publish(getTopicBuffer, getTopicLength, nullptr, 0);
     if (ret != 0) {
         tr_error("publish error: %d", ret);
@@ -618,7 +583,7 @@ int AWSClient::downloadShadowDocument()
     }
 
     // Wait for server response
-    ret = MQTT_ProcessLoop(&mqttContext, 0);
+    ret = processResponses();
     if (ret != MQTTSuccess) {
         tr_error("MQTT_ProcessLoop error: %d", ret);
         goto unsubscribeAndReturn;
@@ -634,7 +599,6 @@ unsubscribeAndReturn:
 
     // Unsubscribe from topics
     unsubscribe(getAcceptedTopicBuffer, getAcceptedTopicLength);
-    unsubscribe(getRejectedTopicBuffer, getRejectedTopicLength);
 
     // Return result
     return ret;
@@ -642,97 +606,67 @@ unsubscribeAndReturn:
 
 int AWSClient::updateShadowDocument(const char *updateDocument, size_t length)
 {
-    static char updateAcceptedTopicBuffer[MBED_CONF_AWS_CLIENT_SHADOW_TOPIC_MAX_SIZE] = {0};
-    uint16_t updateAcceptedTopicLength = 0;
-    static char updateRejectedTopicBuffer[MBED_CONF_AWS_CLIENT_SHADOW_TOPIC_MAX_SIZE] = {0};
-    uint16_t updateRejectedTopicLength = 0;
     static char updateTopicBuffer[MBED_CONF_AWS_CLIENT_SHADOW_TOPIC_MAX_SIZE] = {0};
     uint16_t updateTopicLength = 0;
 
-    // Reset update accepted flag
-    shadowUpdateAccepted = false;
-
-    // Construct update/accepted topic
-    auto shadowStatus = Shadow_GetTopicString(ShadowTopicStringTypeUpdateAccepted,
+    // Construct update topic
+    auto shadowStatus = Shadow_GetTopicString(ShadowTopicStringTypeUpdate,
                                               thingName,
                                               strlen(thingName),
-                                              updateAcceptedTopicBuffer,
-                                              sizeof(updateAcceptedTopicBuffer),
-                                              &updateAcceptedTopicLength);
-    if (shadowStatus != SHADOW_SUCCESS) {
-        tr_error("Shadow_GetTopicString error: %d", shadowStatus);
-        return shadowStatus;
-    }
-    tr_debug("Shadow \"update accepted\" topic: %.*s", updateAcceptedTopicLength, updateAcceptedTopicBuffer);
-
-    // Construct update/rejected topic
-    shadowStatus = Shadow_GetTopicString(ShadowTopicStringTypeUpdateRejected,
-                                         thingName,
-                                         strlen(thingName),
-                                         updateRejectedTopicBuffer,
-                                         sizeof(updateRejectedTopicBuffer),
-                                         &updateRejectedTopicLength);
-    if (shadowStatus != SHADOW_SUCCESS) {
-        tr_error("Shadow_GetTopicString error: %d", shadowStatus);
-        return shadowStatus;
-    }
-    tr_debug("Shadow \"string update rejected\" topic: %.*s", updateRejectedTopicLength, updateRejectedTopicBuffer);
-
-    // Construct update topic
-    shadowStatus = Shadow_GetTopicString(ShadowTopicStringTypeUpdate,
-                                         thingName,
-                                         strlen(thingName),
-                                         updateTopicBuffer,
-                                         sizeof(updateTopicBuffer),
-                                         &updateTopicLength);
+                                              updateTopicBuffer,
+                                              sizeof(updateTopicBuffer),
+                                              &updateTopicLength);
     if (shadowStatus != SHADOW_SUCCESS) {
         tr_error("Shadow_GetTopicString error: %d", shadowStatus);
         return shadowStatus;
     }
     tr_debug("Shadow \"string update\" topic: %.*s", updateTopicLength, updateTopicBuffer);
 
-    // Subscribe to update/accepted topic
-    auto ret = subscribe(updateAcceptedTopicBuffer, updateAcceptedTopicLength);
+    // Publish to update topic
+    auto ret = publish(updateTopicBuffer, updateTopicLength, updateDocument, length);
     if (ret != 0) {
-        tr_error("subscribe error: %d", ret);
+        tr_error("publish error: %d", ret);
         return ret;
     }
 
-    // Subscribe to update/rejected topic
-    ret = subscribe(updateRejectedTopicBuffer, updateRejectedTopicLength);
-    if (ret != 0) {
-        tr_error("subscribe error: %d", ret);
-        goto unsubscribeAndReturn;
-    }
-
-    // Publish to update topic
-    ret = publish(updateTopicBuffer, updateTopicLength, updateDocument, length);
-    if (ret != 0) {
-        tr_error("publish error: %d", ret);
-        goto unsubscribeAndReturn;
-    }
-
-    // Wait for server response
-    ret = MQTT_ProcessLoop(&mqttContext, 0);
-    if (ret != MQTTSuccess) {
-        tr_error("MQTT_ProcessLoop error: %d", ret);
-        goto unsubscribeAndReturn;
-    }
-
-    // Check response
-    if (!shadowUpdateAccepted) {
-        tr_error("Shadow update request rejected.");
-        ret = -1;
-    }
-
-unsubscribeAndReturn:
-
-    // Unsubscribe from topics
-    unsubscribe(updateAcceptedTopicBuffer, updateAcceptedTopicLength);
-    unsubscribe(updateRejectedTopicBuffer, updateRejectedTopicLength);
-
     // Return result
     return ret;
+}
+
+void AWSClient::shadowSubscriptionCallback(MQTTPublishInfo_t *pPublishInfo)
+{
+    /* Let the Device Shadow library tell us whether this is a device shadow message. */
+    ShadowMessageType_t messageType = ShadowMessageTypeMaxNum;
+    const char *pThingName = NULL;
+    uint16_t thingNameLength = 0U;
+    auto &awsClient = AWSClient::getInstance();
+
+    if (SHADOW_SUCCESS == Shadow_MatchTopic(pPublishInfo->pTopicName,
+                                            pPublishInfo->topicNameLength,
+                                            &messageType,
+                                            &pThingName,
+                                            &thingNameLength))
+    {
+        switch (messageType)
+        {
+        case ShadowMessageTypeGetAccepted:
+            tr_debug("/get/accepted json payload: %.*s", pPublishInfo->payloadLength, (const char *)pPublishInfo->pPayload);
+            awsClient.shadowGetAccepted = true;
+            // Buffer should be large enough to contain the response.
+            MBED_ASSERT(pPublishInfo->payloadLength < sizeof(awsClient.shadowGetResponse));
+            // Safely store the get response, truncate if necessary.
+            snprintf(awsClient.shadowGetResponse, sizeof(awsClient.shadowGetResponse), "%.*s", pPublishInfo->payloadLength, (const char *)pPublishInfo->pPayload);
+            break;
+
+        default:
+            tr_warn(
+                "Received unexpected shadow message type: %d, payload: %.*s",
+                messageType,
+                pPublishInfo->payloadLength,
+                (const char *)pPublishInfo->pPayload);
+            break;
+        }
+    }
 }
 
 #endif // MBED_CONF_AWS_CLIENT_SHADOW
